@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.1.1 - 2026-11-07
+
+- Verified native PDO MySQL support against MySQL 8.0, including schema installation, persistence across separate connections, durable claim replay, JSON filters, and transaction rollback.
+- Added a dedicated PDO MySQL integration test, a connection example, and a deployment guide with required database permissions.
+- Expanded CI checks for MySQL and PHP 8.2–8.4 compatibility.
+
+## 0.1.0 - 2026-11-07
 
 - Standalone `tihloh/smsgate` Composer package with PSR-4 autoloading, PHP 8.2+, and no runtime package dependencies.
 - One Android endpoint with plain `process()` integration while the host owns its POST check.
