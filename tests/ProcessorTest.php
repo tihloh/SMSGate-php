@@ -75,9 +75,9 @@ final class ProcessorTest extends TestCase
     public function testSchemaAddsMissingTableAndPreservesExistingRows(): void
     {
         $pdo=new \PDO('sqlite::memory:'); $sms=Gateway::pdo($pdo); $device=$sms->registerDevice('Phone');
-        $pdo->exec('DROP TABLE smsgate_annotations');
+        $pdo->exec('DROP TABLE smsgate_records');
         $reopened=Gateway::pdo($pdo); self::assertSame('Phone',$reopened->getDevice($device->id)['name']);
-        self::assertSame(1,(int)$pdo->query("SELECT COUNT(*) FROM sqlite_master WHERE name='smsgate_annotations'")->fetchColumn());
+        self::assertSame(1,(int)$pdo->query("SELECT COUNT(*) FROM sqlite_master WHERE name='smsgate_records'")->fetchColumn());
     }
     public function testStorageErrorDoesNotLeakDetails(): void
     {

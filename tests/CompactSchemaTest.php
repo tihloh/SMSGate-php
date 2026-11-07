@@ -9,6 +9,22 @@ use Tihloh\SmsGate\Gateway;
 
 final class CompactSchemaTest extends TestCase
 {
+    public function testLegacySchemaIsRefusedBeforeCreatingNewTables(): void
+    {
+        $pdo = new PDO('sqlite::memory:');
+        $pdo->exec('CREATE TABLE smsgate_meta (id INTEGER PRIMARY KEY,version INTEGER NOT NULL)');
+        $pdo->exec('INSERT INTO smsgate_meta (id,version) VALUES (1,1)');
+        try {
+            Gateway::pdo($pdo);
+            self::fail('Version 1 should require explicit data migration.');
+        } catch (\RuntimeException $error) {
+            self::assertStringContainsString('version 1 first', $error->getMessage());
+        }
+        self::assertSame(0, (int)$pdo->query(
+            "SELECT COUNT(*) FROM sqlite_master WHERE name='smsgate_records'"
+        )->fetchColumn());
+    }
+
     public function testFivePhysicalTablesAndIsolatedRecordScopes(): void
     {
         $pdo = new PDO('sqlite::memory:');
