@@ -2,7 +2,7 @@
 
 ## Transaction guarantees
 
-The package owns eight prefixed tables: meta, devices, installations, jobs, claims, batches, receipts, outbox. Use a dedicated PDO connection. SQLite uses `BEGIN IMMEDIATE` with a five-second busy timeout. MySQL uses an InnoDB transaction and locks the schema coordinator row. Writes are serialized across instances sharing a prefix; locks are short and contain no network calls or application callbacks. This favors consistent SMS processing over maximum parallel write throughput. Measure your workload before deploying at high volume; use separate prefixes/databases for independent gateways if appropriate.
+The package owns ten prefixed tables: meta, devices, installations, enrollments, jobs, claims, batches, receipts, outbox, and annotations. Use a dedicated PDO connection. SQLite uses `BEGIN IMMEDIATE` with a five-second busy timeout. MySQL uses an InnoDB transaction and locks the schema coordinator row. Writes are serialized across instances sharing a prefix; locks are short and contain no network calls or application callbacks. This favors consistent SMS processing over maximum parallel write throughput. Measure your workload before deploying at high volume; use separate prefixes/databases for independent gateways if appropriate.
 
 Every claim caches its response in the same transaction that marks jobs CLAIMED. The phone reuses its claim key after network failure. Enqueueing with a stable key is similarly atomic, including all template validation before writes. Incoming SMS/status acknowledgements are returned only after committing their records and integration events. Duplicate IDs with the same normalized payload acknowledge again; changed payloads return 409.
 
@@ -20,8 +20,8 @@ Approval is checked under the same transaction coordination as device operations
 
 ## Deployment
 
-Keep SQLite files outside the document root and use restrictive filesystem permissions. SQLite needs write access to its directory for journal files. For MySQL, use a dedicated user; schema installation needs CREATE/INDEX, runtime needs SELECT/INSERT/UPDATE on the package tables. Configure utf8mb4. Keep the connection separate from any host-application transaction.
+Keep SQLite files outside the document root and use restrictive filesystem permissions. SQLite needs write access to its directory for journal files. For MySQL, use a dedicated user; schema installation needs CREATE/INDEX, runtime needs SELECT/INSERT/UPDATE/DELETE on the package tables. DROP is needed by disposable integration-test cleanup, not runtime use. Configure utf8mb4. Keep the connection separate from any host-application transaction.
 
 TLS, endpoint rate limiting, tenant/admin authorization, log policy, retention, and backup access belong to the host application. HTTP remains compatible with the phone but is unencrypted. Do not enable token-bearing cross-origin browser APIs unnecessarily; these routes are device-server communication, not a browser dashboard.
 
-Current local verification uses PHP 8.2 and SQLite, including separate-process claim contention. MySQL integration is supported by the adapter and has a CI test configuration; it must pass against your MySQL service before deployment. Nothing in the package asserts Google Play approval for the Android app.
+CI verifies PHP 8.2–8.4 with SQLite and separately exercises PDO MySQL against MySQL 8.0. The MySQL-specific test verifies schema installation, a fresh-connection claim replay, JSON inbox filters, and rollback. Nothing in the package asserts Google Play approval for the Android app.

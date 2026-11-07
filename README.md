@@ -38,15 +38,24 @@ use Tihloh\SmsGate\Gateway;
 $gateway = Gateway::sqlite(__DIR__ . '/private/smsgate.sqlite');
 ```
 
-For MySQL, use your own dedicated PDO connection:
+For MySQL 8.0, use a **dedicated PDO MySQL connection**, not `mysqli`:
 
 ```php
-use Tihloh\SmsGate\Storage\PdoStore;
-
-$pdo = new PDO('mysql:host=localhost;dbname=your_app;charset=utf8mb4', $user, $password);
-$gateway = new Gateway(new PdoStore($pdo, prefix: 'smsgate_'));
+$pdo = new PDO(
+    'mysql:host=127.0.0.1;port=3306;dbname=your_app;charset=utf8mb4',
+    getenv('DB_USER'),
+    getenv('DB_PASSWORD'),
+    [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES => false,
+    ]
+);
+$gateway = Gateway::pdo($pdo, 'smsgate_');
 $gateway->installSchema(); // Optional explicit deployment step; normal use also checks.
 ```
+
+See the [full PDO MySQL setup guide](docs/mysql-pdo.md) and [working connection example](examples/mysql-pdo.php).
 
 Tables are prefixed and created automatically when missing. `installSchema()` remains available for deployment scripts and is repeatable. MySQL uses InnoDB. Use a dedicated connection: the package owns its transactions and rejects nesting inside your application's transaction. See [storage and reliability](docs/reliability.md).
 
