@@ -24,6 +24,10 @@ jobs:
       - run: composer check
   mysql:
     runs-on: ubuntu-latest
+    env:
+      SMSGATE_TEST_MYSQL_DSN: 'mysql:host=127.0.0.1;port=3306;dbname=smsgate_test;charset=utf8mb4'
+      SMSGATE_TEST_MYSQL_USER: smsgate_test
+      SMSGATE_TEST_MYSQL_PASSWORD: integration-test-only
     services:
       mysql:
         image: mysql:8.0
@@ -44,8 +48,5 @@ jobs:
           extensions: pdo_mysql, pdo_sqlite
           coverage: none
       - run: composer install --no-interaction --prefer-dist
-      - run: composer test
-        env:
-          SMSGATE_TEST_MYSQL_DSN: 'mysql:host=127.0.0.1;port=3306;dbname=smsgate_test;charset=utf8mb4'
-          SMSGATE_TEST_MYSQL_USER: smsgate_test
-          SMSGATE_TEST_MYSQL_PASSWORD: integration-test-only
+      - run: composer check
+      - run: vendor/bin/phpunit --filter MySqlPdoTest --no-coverage
