@@ -31,7 +31,7 @@ final class GatewayTest extends TestCase
     {
         if ($this->mysqlStore !== null) {
             // Only tables in this test's freshly generated random prefix are removed.
-            foreach (['annotations','outbox','receipts','batches','claims','jobs','installations','enrollments','devices','meta'] as $table) {
+            foreach (['records','jobs','installations','devices','meta'] as $table) {
                 $this->mysqlStore->query('DROP TABLE IF EXISTS ' . $this->mysqlStore->table($table));
             }
         }

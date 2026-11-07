@@ -58,7 +58,7 @@ final class Gateway
             $expiry=$expiresAt ?? $this->now()+900000;
             if ($expiry <= $this->now()) throw new GatewayException('invalid_expiry');
             $id=Support::uuid(); $token=bin2hex(random_bytes(32));
-            $this->q("INSERT INTO {$this->t('enrollments')} (id,token_hash,expires_at,created_at) VALUES (?,?,?,?)",[$id,hash('sha256',$token),$expiry,$this->now()]);
+            $this->q("INSERT INTO {$this->t('records')} (scope,device_id,kind,id,token_hash,expires_at,created_at) VALUES ('enrollment','','',?,?,?,?)",[$id,hash('sha256',$token),$expiry,$this->now()]);
             return new EnrollmentCredentials($id,$token);
         });
     }
@@ -179,7 +179,7 @@ final class Gateway
     public function jobs(string $deviceId, int $limit = 100, int $offset = 0): array
     {
         $this->page($limit, $offset);
-        $rows = $this->q("SELECT j.* FROM {$this->t('jobs')} j WHERE j.device_id=? AND NOT EXISTS (SELECT 1 FROM {$this->t('annotations')} a WHERE a.device_id=j.device_id AND a.kind='job' AND a.id=j.id AND a.deleted=1) ORDER BY j.created_at,j.id LIMIT $limit OFFSET $offset", [$deviceId])->fetchAll();
+        $rows = $this->q("SELECT j.* FROM {$this->t('jobs')} j WHERE j.device_id=? AND NOT EXISTS (SELECT 1 FROM {$this->t('records')} a WHERE a.scope='annotation' AND a.device_id=j.device_id AND a.kind='job' AND a.id=j.id AND a.deleted=1) ORDER BY j.created_at,j.id LIMIT $limit OFFSET $offset", [$deviceId])->fetchAll();
         return array_map(fn(array $row): array => $row + ['metadata' => $this->annotation($deviceId, 'job', $row['id'])['metadata']], $rows);
     }
 
@@ -188,7 +188,7 @@ final class Gateway
     {
         $this->page($limit,$offset); $allowed=['deviceId','state'];
         if (array_diff(array_keys($filter),$allowed)) throw new GatewayException('unknown_filter');
-        $where=["NOT EXISTS (SELECT 1 FROM {$this->t('annotations')} a WHERE a.device_id=j.device_id AND a.kind='job' AND a.id=j.id AND a.deleted=1)"]; $args=[];
+        $where=["NOT EXISTS (SELECT 1 FROM {$this->t('records')} a WHERE a.scope='annotation' AND a.device_id=j.device_id AND a.kind='job' AND a.id=j.id AND a.deleted=1)"]; $args=[];
         if (isset($filter['deviceId'])) { $where[]='j.device_id=?'; $args[]=Support::text($filter['deviceId'],'deviceId',64); }
         if (isset($filter['state'])) { $where[]='j.state=?'; $args[]=Support::text($filter['state'],'state',20); }
         $rows=$this->q("SELECT j.*,d.name gateway_name,d.active gateway_active FROM {$this->t('jobs')} j JOIN {$this->t('devices')} d ON d.id=j.device_id WHERE ".implode(' AND ',$where)." ORDER BY j.created_at,j.id LIMIT $limit OFFSET $offset",$args)->fetchAll();
@@ -230,7 +230,7 @@ final class Gateway
         $this->page($limit, $offset);
         $allowed = ['id', 'sender', 'from', 'to'];
         if (array_diff(array_keys($filter), $allowed)) throw new GatewayException('unknown_filter');
-        $where = ['r.device_id=?', 'r.kind=?']; $args = [$deviceId, $kind];
+        $where = ["r.scope='receipt'", 'r.device_id=?', 'r.kind=?']; $args = [$deviceId, $kind];
         if (isset($filter['id'])) { $where[] = 'r.id=?'; $args[] = Support::text($filter['id'], 'id', 64); }
         if (isset($filter['sender'])) {
             $where[] = $this->store->driver() === 'mysql'
@@ -243,24 +243,24 @@ final class Gateway
             : "CAST(json_extract(r.payload, '$.timestamp') AS INTEGER)";
         if (isset($filter['from'])) { $where[] = "$timestamp>=?"; $args[] = Support::integer($filter['from'], 'from'); }
         if (isset($filter['to'])) { $where[] = "$timestamp<=?"; $args[] = Support::integer($filter['to'], 'to'); }
-        $where[] = "NOT EXISTS (SELECT 1 FROM {$this->t('annotations')} a WHERE a.device_id=r.device_id AND a.kind=r.kind AND a.id=r.id AND a.deleted=1)";
+        $where[] = "NOT EXISTS (SELECT 1 FROM {$this->t('records')} a WHERE a.scope='annotation' AND a.device_id=r.device_id AND a.kind=r.kind AND a.id=r.id AND a.deleted=1)";
         return array_map(fn(array $row): array => ['id' => $row['id'], 'receivedAt' => (int)$row['created_at'], 'data' => json_decode($row['payload'], true, 32, JSON_THROW_ON_ERROR), 'metadata' => $this->annotation($deviceId, $kind, $row['id'])['metadata']],
-            $this->q("SELECT r.id,r.payload,r.created_at FROM {$this->t('receipts')} r WHERE " . implode(' AND ', $where) . " ORDER BY r.created_at,r.id LIMIT $limit OFFSET $offset", $args)->fetchAll());
+            $this->q("SELECT r.id,r.payload,r.created_at FROM {$this->t('records')} r WHERE " . implode(' AND ', $where) . " ORDER BY r.created_at,r.id LIMIT $limit OFFSET $offset", $args)->fetchAll());
     }
 
     private function sharedReceipts(string $kind, array $filter, int $limit, int $offset): array
     {
         $this->page($limit,$offset); $allowed=['deviceId','id','sender','from','to'];
         if (array_diff(array_keys($filter),$allowed)) throw new GatewayException('unknown_filter');
-        $where=['r.kind=?']; $args=[$kind];
+        $where=["r.scope='receipt'",'r.kind=?']; $args=[$kind];
         if (isset($filter['deviceId'])) { $where[]='r.device_id=?'; $args[]=Support::text($filter['deviceId'],'deviceId',64); }
         if (isset($filter['id'])) { $where[]='r.id=?'; $args[]=Support::text($filter['id'],'id',64); }
         if (isset($filter['sender'])) { $where[]=$this->store->driver()==='mysql'?"JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.sender'))=?":"json_extract(r.payload, '$.sender')=?"; $args[]=Support::text($filter['sender'],'sender',512,true); }
         $timestamp=$this->store->driver()==='mysql'?"CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.timestamp')) AS SIGNED)":"CAST(json_extract(r.payload, '$.timestamp') AS INTEGER)";
         if (isset($filter['from'])) { $where[]="$timestamp>=?"; $args[]=Support::integer($filter['from'],'from'); }
         if (isset($filter['to'])) { $where[]="$timestamp<=?"; $args[]=Support::integer($filter['to'],'to'); }
-        $where[]="NOT EXISTS (SELECT 1 FROM {$this->t('annotations')} a WHERE a.device_id=r.device_id AND a.kind=r.kind AND a.id=r.id AND a.deleted=1)";
-        $rows=$this->q("SELECT r.id,r.device_id,r.payload,r.created_at,d.name gateway_name,d.active gateway_active FROM {$this->t('receipts')} r JOIN {$this->t('devices')} d ON d.id=r.device_id WHERE ".implode(' AND ',$where)." ORDER BY r.created_at,r.id LIMIT $limit OFFSET $offset",$args)->fetchAll();
+        $where[]="NOT EXISTS (SELECT 1 FROM {$this->t('records')} a WHERE a.scope='annotation' AND a.device_id=r.device_id AND a.kind=r.kind AND a.id=r.id AND a.deleted=1)";
+        $rows=$this->q("SELECT r.id,r.device_id,r.payload,r.created_at,d.name gateway_name,d.active gateway_active FROM {$this->t('records')} r JOIN {$this->t('devices')} d ON d.id=r.device_id WHERE ".implode(' AND ',$where)." ORDER BY r.created_at,r.id LIMIT $limit OFFSET $offset",$args)->fetchAll();
         return array_map(fn(array $row): array => ['id'=>$row['id'],'receivedAt'=>(int)$row['created_at'],'data'=>json_decode($row['payload'],true,32,JSON_THROW_ON_ERROR),'gateway'=>['id'=>$row['device_id'],'name'=>$row['gateway_name'],'enabled'=>(bool)$row['gateway_active']],'metadata'=>$this->annotation($row['device_id'],$kind,$row['id'])['metadata']],$rows);
     }
 
@@ -269,13 +269,13 @@ final class Gateway
     {
         $this->page($limit, 0);
         return array_map(static fn(array $row): array => ['id' => $row['id'], 'deviceId' => $row['device_id'], 'type' => $row['type'], 'createdAt' => (int)$row['created_at'], 'data' => json_decode($row['payload'], true, 32, JSON_THROW_ON_ERROR)],
-            $this->q("SELECT * FROM {$this->t('outbox')} WHERE acknowledged=0 ORDER BY created_at,id LIMIT $limit")->fetchAll());
+            $this->q("SELECT id,device_id,kind AS type,payload,created_at FROM {$this->t('records')} WHERE scope='event' AND acknowledged=0 ORDER BY created_at,id LIMIT $limit")->fetchAll());
     }
 
     public function acknowledgeEvent(string $id): void
     {
         $this->store->transaction(function () use ($id): void {
-            $this->q("UPDATE {$this->t('outbox')} SET acknowledged=1,payload='{}' WHERE id=?", [$id]);
+            $this->q("UPDATE {$this->t('records')} SET acknowledged=1,payload='{}' WHERE scope='event' AND id=?", [$id]);
         });
     }
 
@@ -290,13 +290,13 @@ final class Gateway
             $device = $this->q("SELECT * FROM {$this->t('devices')} WHERE token_hash=? AND active=1", [hash('sha256', $token)])->fetch();
             if (!$device) {
                 if ($path !== '/v1/test') throw new GatewayException('unauthorized', 401);
-                $enrollment=$this->q("SELECT id FROM {$this->t('enrollments')} WHERE token_hash=? AND expires_at>?",[hash('sha256',$token),$this->now()])->fetch();
+                $enrollment=$this->q("SELECT id FROM {$this->t('records')} WHERE scope='enrollment' AND token_hash=? AND expires_at>?",[hash('sha256',$token),$this->now()])->fetch();
                 if (!$enrollment) throw new GatewayException('unauthorized', 401);
                 $name=trim(Support::text($body['gatewayName'] ?? null,'gatewayName',120));
                 if ($name==='') throw new GatewayException('invalid_gatewayName');
                 $device=['id'=>Support::uuid(),'name'=>$name,'token_hash'=>hash('sha256',$token),'active'=>1,'created_at'=>$this->now()];
                 $this->q("INSERT INTO {$this->t('devices')} (id,name,token_hash,active,created_at) VALUES (?,?,?,1,?)",[$device['id'],$device['name'],$device['token_hash'],$device['created_at']]);
-                $this->q("DELETE FROM {$this->t('enrollments')} WHERE id=?",[$enrollment['id']]);
+                $this->q("DELETE FROM {$this->t('records')} WHERE scope='enrollment' AND id=?",[$enrollment['id']]);
                 $this->emit($device['id'],'device.enrolled',['name'=>$name]);
             }
             $status = $this->q("SELECT status FROM {$this->t('installations')} WHERE device_id=? AND installation_id=?", [$device['id'], $installation])->fetchColumn();
@@ -354,12 +354,12 @@ final class Gateway
             if (!$job || $job['device_id'] !== $deviceId) throw new GatewayException('job_not_found', 404);
         }
         $json = Support::json($payload); $hash = hash('sha256', $json);
-        $old = $this->q("SELECT payload_hash FROM {$this->t('receipts')} WHERE device_id=? AND kind=? AND id=?", [$deviceId, $kind, $id])->fetchColumn();
+        $old = $this->q("SELECT payload_hash FROM {$this->t('records')} WHERE scope='receipt' AND device_id=? AND kind=? AND id=?", [$deviceId, $kind, $id])->fetchColumn();
         if ($old !== false) {
             if (!hash_equals($old, $hash)) throw new GatewayException('idempotency_conflict', 409);
             return ['ackId' => $id];
         }
-        $this->q("INSERT INTO {$this->t('receipts')} (device_id,kind,id,payload_hash,payload,created_at) VALUES (?,?,?,?,?,?)", [$deviceId, $kind, $id, $hash, $json, $this->now()]);
+        $this->q("INSERT INTO {$this->t('records')} (scope,device_id,kind,id,payload_hash,payload,created_at) VALUES ('receipt',?,?,?,?,?,?)", [$deviceId, $kind, $id, $hash, $json, $this->now()]);
         if ($kind === 'status') {
             $transitions = [
                 'CLAIMED' => ['STORED','SENDING','SENT','DELIVERED','FAILED','UNKNOWN','EXPIRED','CANCELLED'],
@@ -383,7 +383,7 @@ final class Gateway
 
     private function cached(string $table, string $deviceId, string $key, string $hash): ?array
     {
-        $old = $this->q("SELECT payload_hash,response FROM {$this->t($table)} WHERE device_id=? AND request_key=?", [$deviceId, $key])->fetch();
+        $old = $this->q("SELECT payload_hash,response FROM {$this->t('records')} WHERE scope=? AND device_id=? AND kind='' AND id=?", [$table === 'claims' ? 'claim' : 'batch', $deviceId, $key])->fetch();
         if (!$old) return null;
         if (!hash_equals($old['payload_hash'], $hash)) throw new GatewayException('idempotency_conflict', 409);
         return json_decode($old['response'], true, 32, JSON_THROW_ON_ERROR);
@@ -391,12 +391,12 @@ final class Gateway
 
     private function cache(string $table, string $deviceId, string $key, string $hash, array $response): void
     {
-        $this->q("INSERT INTO {$this->t($table)} (device_id,request_key,payload_hash,response) VALUES (?,?,?,?)", [$deviceId, $key, $hash, Support::json($response)]);
+        $this->q("INSERT INTO {$this->t('records')} (scope,device_id,kind,id,payload_hash,response) VALUES (?,?,'',?,?,?)", [$table === 'claims' ? 'claim' : 'batch', $deviceId, $key, $hash, Support::json($response)]);
     }
 
     private function emit(string $deviceId, string $type, array $data): void
     {
-        $this->q("INSERT INTO {$this->t('outbox')} (id,device_id,type,payload,created_at,acknowledged) VALUES (?,?,?,?,?,0)", [Support::uuid(), $deviceId, $type, Support::json($data), $this->now()]);
+        $this->q("INSERT INTO {$this->t('records')} (scope,device_id,kind,id,payload,created_at,acknowledged) VALUES ('event',?,?,?,?,?,0)", [$deviceId, $type, Support::uuid(), Support::json($data), $this->now()]);
     }
 
     private function page(int $limit, int $offset): void

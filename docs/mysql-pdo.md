@@ -35,12 +35,11 @@ $smsgate = Gateway::pdo($pdo, 'smsgate_');
 The package automatically initializes its own prefixed schema on first use.
 You can also call `$smsgate->installSchema()` explicitly from a **trusted
 deployment command**. This operation is repeatable and does not remove existing
-rows. By default, SMSGate creates ten tables:
+rows. The compact SMSGate schema (version 2) creates **five tables**:
 
-`smsgate_meta`, `smsgate_devices`, `smsgate_installations`,
-`smsgate_enrollments`, `smsgate_jobs`, `smsgate_claims`,
-`smsgate_batches`, `smsgate_receipts`, `smsgate_outbox`, and
-`smsgate_annotations`.
+`smsgate_meta`, `smsgate_devices`, `smsgate_installations`, `smsgate_jobs`, and `smsgate_records`.
+
+`records` is a typed table which preserves separate idempotency keys, receipt hashes, callback acknowledgements and private annotations by scoped composite keys. It replaces the six former tables for enrollments, claims, batches, receipts, outbox events and annotations. Existing production databases at schema version 1 **must be migrated in a controlled maintenance window with a verified backup**; the SDK does not destroy or silently upgrade historical tables.
 
 You may use the same MySQL database as your application, but use a **new PDO
 connection**: SMSGate needs to begin/commit its own transactions and must not be

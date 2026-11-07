@@ -25,7 +25,7 @@ final class PdoStore
 
     public function table(string $name): string
     {
-        if (!in_array($name, ['meta','devices','installations','enrollments','jobs','claims','batches','receipts','outbox','annotations'], true)) throw new \InvalidArgumentException('Invalid table');
+        if (!in_array($name, ['meta','devices','installations','jobs','records'], true)) throw new \InvalidArgumentException('Invalid table');
         return $this->prefix . $name;
     }
 
@@ -42,13 +42,23 @@ final class PdoStore
     {
         if ($this->ready) return;
         if ($this->pdo->inTransaction() || $this->running) throw new \LogicException('SMSGate needs its own connection outside host transactions');
-        $tables = array_map($this->table(...), ['meta','devices','installations','enrollments','jobs','claims','batches','receipts','outbox','annotations']);
+        $tables = array_map($this->table(...), ['meta','devices','installations','jobs','records']);
         $placeholders = implode(',', array_fill(0, count($tables), '?'));
         $sql = $this->driver === 'sqlite'
             ? "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ($placeholders)"
             : "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name IN ($placeholders)";
+        // Refuse older schemas before attempting to create *any* v2 tables.
+        // A v1-to-v2 conversion needs an explicit, backed-up migration.
+        $meta = $this->table('meta');
+        $metaExistsSql = $this->driver === 'sqlite'
+            ? "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?"
+            : "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=?";
+        if ((int)$this->query($metaExistsSql, [$meta])->fetchColumn() > 0 &&
+            (int)$this->query("SELECT version FROM $meta WHERE id=1")->fetchColumn() !== 2) {
+            throw new \RuntimeException('Unsupported SMSGate schema version; migrate version 1 first');
+        }
         if ((int)$this->query($sql, $tables)->fetchColumn() !== count($tables)) $this->install();
-        if ((int)$this->query("SELECT version FROM {$this->table('meta')} WHERE id=1")->fetchColumn() !== 1) throw new \RuntimeException('Unsupported SMSGate schema version');
+        if ((int)$this->query("SELECT version FROM {$this->table('meta')} WHERE id=1")->fetchColumn() !== 2) throw new \RuntimeException('Unsupported SMSGate schema version');
         $this->ready = true;
     }
 
@@ -56,26 +66,32 @@ final class PdoStore
     public function install(): void
     {
         if ($this->pdo->inTransaction() || $this->running) throw new \LogicException('Install outside a transaction');
+        // Direct installSchema() must also refuse to modify legacy v1 tables.
+        $meta = $this->table('meta');
+        $metaExistsSql = $this->driver === 'sqlite'
+            ? "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?"
+            : "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=?";
+        if ((int)$this->query($metaExistsSql, [$meta])->fetchColumn() > 0 &&
+            (int)$this->query("SELECT version FROM $meta WHERE id=1")->fetchColumn() !== 2) {
+            throw new \RuntimeException('Unsupported SMSGate schema version; migrate version 1 first');
+        }
         $text = $this->driver === 'mysql' ? 'LONGTEXT' : 'TEXT';
         $suffix = $this->driver === 'mysql' ? ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin' : '';
         $schemas = [
             'meta' => 'id INTEGER PRIMARY KEY, version INTEGER NOT NULL',
             'devices' => 'id VARCHAR(36) PRIMARY KEY, name VARCHAR(120) NOT NULL, token_hash VARCHAR(64) NOT NULL UNIQUE, active INTEGER NOT NULL, created_at BIGINT NOT NULL',
             'installations' => 'device_id VARCHAR(36) NOT NULL, installation_id VARCHAR(36) NOT NULL, status VARCHAR(16) NOT NULL, first_seen BIGINT NOT NULL, reviewed_at BIGINT NULL, PRIMARY KEY(device_id,installation_id)',
-            'enrollments' => 'id VARCHAR(36) PRIMARY KEY, token_hash VARCHAR(64) NOT NULL UNIQUE, expires_at BIGINT NOT NULL, created_at BIGINT NOT NULL',
             'jobs' => "id VARCHAR(36) PRIMARY KEY, device_id VARCHAR(36) NOT NULL, recipient VARCHAR(16) NOT NULL, body $text NOT NULL, expires_at BIGINT NOT NULL, state VARCHAR(20) NOT NULL, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL",
-            'claims' => "device_id VARCHAR(36) NOT NULL, request_key VARCHAR(128) NOT NULL, payload_hash VARCHAR(64) NOT NULL, response $text NOT NULL, PRIMARY KEY(device_id,request_key)",
-            'batches' => "device_id VARCHAR(36) NOT NULL, request_key VARCHAR(128) NOT NULL, payload_hash VARCHAR(64) NOT NULL, response $text NOT NULL, PRIMARY KEY(device_id,request_key)",
-            'receipts' => "device_id VARCHAR(36) NOT NULL, kind VARCHAR(20) NOT NULL, id VARCHAR(64) NOT NULL, payload_hash VARCHAR(64) NOT NULL, payload $text NOT NULL, created_at BIGINT NOT NULL, PRIMARY KEY(device_id,kind,id)",
-            'outbox' => "id VARCHAR(36) PRIMARY KEY, device_id VARCHAR(36) NOT NULL, type VARCHAR(40) NOT NULL, payload $text NOT NULL, created_at BIGINT NOT NULL, acknowledged INTEGER NOT NULL DEFAULT 0",
-            'annotations' => "device_id VARCHAR(36) NOT NULL, kind VARCHAR(20) NOT NULL, id VARCHAR(64) NOT NULL, metadata $text NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(device_id,kind,id)",
+            // Typed records consolidate six old tables: enrollments, claims,
+            // batches, receipts, callback outbox, and annotations.
+            'records' => "scope VARCHAR(16) NOT NULL, device_id VARCHAR(36) NOT NULL DEFAULT '', kind VARCHAR(40) NOT NULL DEFAULT '', id VARCHAR(128) NOT NULL, token_hash VARCHAR(64) NULL UNIQUE, expires_at BIGINT NULL, payload_hash VARCHAR(64) NULL, payload $text NULL, response $text NULL, metadata $text NULL, deleted INTEGER NOT NULL DEFAULT 0, acknowledged INTEGER NOT NULL DEFAULT 0, created_at BIGINT NOT NULL DEFAULT 0, PRIMARY KEY(scope,device_id,kind,id)",
         ];
         foreach ($schemas as $table => $sql) $this->pdo->exec('CREATE TABLE IF NOT EXISTS ' . $this->table($table) . " ($sql)$suffix");
         // The schema marker also coordinates short write transactions across processes.
         $insert = $this->driver === 'sqlite' ? 'INSERT OR IGNORE' : 'INSERT IGNORE';
-        $this->pdo->exec("$insert INTO {$this->table('meta')} (id,version) VALUES (1,1)");
-        if ((int)$this->query("SELECT version FROM {$this->table('meta')} WHERE id=1")->fetchColumn() !== 1) throw new \RuntimeException('Unsupported SMSGate schema version');
-        foreach (['jobs' => 'device_id,state,created_at', 'outbox' => 'acknowledged,created_at', 'receipts' => 'device_id,kind,created_at'] as $table => $columns) {
+        $this->pdo->exec("$insert INTO {$this->table('meta')} (id,version) VALUES (1,2)");
+        if ((int)$this->query("SELECT version FROM {$this->table('meta')} WHERE id=1")->fetchColumn() !== 2) throw new \RuntimeException('Unsupported SMSGate schema version');
+        foreach (['jobs' => 'device_id,state,created_at', 'records' => 'scope,device_id,kind,created_at'] as $table => $columns) {
             $index = $this->table($table) . '_lookup';
             if ($this->driver === 'sqlite') $this->pdo->exec("CREATE INDEX IF NOT EXISTS $index ON {$this->table($table)} ($columns)");
             else {
@@ -84,6 +100,18 @@ final class PdoStore
                     try { $this->pdo->exec("CREATE INDEX $index ON {$this->table($table)} ($columns)"); }
                     catch (\PDOException $error) { if (($error->errorInfo[1] ?? null) !== 1061) throw $error; } // Concurrent first request.
                 }
+            }
+        }
+        $index = $this->table('records') . '_pending';
+        if ($this->driver === 'sqlite') {
+            $this->pdo->exec("CREATE INDEX IF NOT EXISTS $index ON {$this->table('records')} (scope,acknowledged,created_at)");
+        } else {
+            $exists = $this->query(
+                'SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name=? AND index_name=?',
+                [$this->table('records'), $index]
+            )->fetchColumn();
+            if (!(int)$exists) {
+                $this->pdo->exec("CREATE INDEX $index ON {$this->table('records')} (scope,acknowledged,created_at)");
             }
         }
     }
@@ -99,7 +127,7 @@ final class PdoStore
             else $this->pdo->beginTransaction();
             $started = true;
             $version = $this->query("SELECT version FROM {$this->table('meta')} WHERE id=1" . ($this->driver === 'mysql' ? ' FOR UPDATE' : ''))->fetchColumn();
-            if ((int)$version !== 1) throw new \RuntimeException('Install the SMSGate schema first');
+            if ((int)$version !== 2) throw new \RuntimeException('Install the SMSGate schema first');
             $result = $work();
             $this->pdo->exec('COMMIT'); $started = false;
             return $result;

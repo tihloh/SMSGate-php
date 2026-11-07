@@ -57,7 +57,7 @@ $gateway->installSchema(); // Optional explicit deployment step; normal use also
 
 See the [full PDO MySQL setup guide](docs/mysql-pdo.md) and [working connection example](examples/mysql-pdo.php).
 
-Tables are prefixed and created automatically when missing. `installSchema()` remains available for deployment scripts and is repeatable. MySQL uses InnoDB. Use a dedicated connection: the package owns its transactions and rejects nesting inside your application's transaction. See [storage and reliability](docs/reliability.md).
+The compact schema uses **five tables**: `smsgate_meta`, `smsgate_devices`, `smsgate_installations`, `smsgate_jobs` and `smsgate_records`. The typed records table stores enrollment credentials, deduplication caches, incoming and status receipts, callback events, and metadata without losing their individual uniqueness rules. Tables are prefixed and created automatically when missing. `installSchema()` remains available for deployment scripts and is repeatable. MySQL uses InnoDB. Use a dedicated connection: the package owns its transactions and rejects nesting inside your application's transaction. See [storage and reliability](docs/reliability.md).
 
 ### 2. Process the single Android endpoint
 

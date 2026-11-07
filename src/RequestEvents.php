@@ -21,8 +21,8 @@ trait RequestEvents
         $this->page($limit, 0); $this->callbackErrors = []; $this->dispatching = true;
         try {
             $types = array_keys($this->listeners);
-            $where = isset($this->listeners['*']) ? '' : ' AND type IN (' . implode(',', array_fill(0, count($types), '?')) . ')';
-            $rows = $this->q("SELECT * FROM {$this->t('outbox')} WHERE acknowledged=0$where ORDER BY created_at,id LIMIT $limit", $where === '' ? [] : $types)->fetchAll();
+            $where = isset($this->listeners['*']) ? '' : ' AND kind IN (' . implode(',', array_fill(0, count($types), '?')) . ')';
+            $rows = $this->q("SELECT id,device_id,kind AS type,payload,created_at FROM {$this->t('records')} WHERE scope='event' AND acknowledged=0$where ORDER BY created_at,id LIMIT $limit", $where === '' ? [] : $types)->fetchAll();
             $done = 0;
             foreach ($rows as $row) {
                 $event = ['id'=>$row['id'],'deviceId'=>$row['device_id'],'type'=>$row['type'],'createdAt'=>(int)$row['created_at'],'data'=>json_decode($row['payload'],true,32,JSON_THROW_ON_ERROR)];

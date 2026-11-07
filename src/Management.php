@@ -29,7 +29,7 @@ trait Management
     {
         return $this->store->transaction(function () use ($id): bool {
             if (!$this->getDevice($id)) return false;
-            foreach (['installations','jobs','claims','batches','receipts','outbox','annotations'] as $table) $this->q("DELETE FROM {$this->t($table)} WHERE device_id=?",[$id]);
+            foreach (['installations','jobs','records'] as $table) $this->q("DELETE FROM {$this->t($table)} WHERE device_id=?",[$id]);
             $this->q("DELETE FROM {$this->t('devices')} WHERE id=?",[$id]); return true;
         });
     }
@@ -88,10 +88,10 @@ trait Management
             $state=$job['state']==='QUEUED' ? 'CANCELLED' : $job['state'];
             $this->q("UPDATE {$this->t('jobs')} SET recipient='',body='',state=?,updated_at=? WHERE id=?",[$state,$this->now(),$id]);
             $this->saveAnnotation($job['device_id'],'job',$id,[],true);
-            foreach ($this->q("SELECT request_key,response FROM {$this->t('claims')} WHERE device_id=?",[$job['device_id']])->fetchAll() as $claim) {
+            foreach ($this->q("SELECT id AS request_key,response FROM {$this->t('records')} WHERE scope='claim' AND device_id=?",[$job['device_id']])->fetchAll() as $claim) {
                 $response=json_decode($claim['response'],true,32,JSON_THROW_ON_ERROR);
                 $response['jobs']=array_values(array_filter($response['jobs'],static fn(array $row): bool => $row['id']!==$id));
-                $this->q("UPDATE {$this->t('claims')} SET response=? WHERE device_id=? AND request_key=?",[Support::json($response),$job['device_id'],$claim['request_key']]);
+                $this->q("UPDATE {$this->t('records')} SET response=? WHERE scope='claim' AND device_id=? AND id=?",[Support::json($response),$job['device_id'],$claim['request_key']]);
             }
             return true;
         });
@@ -136,7 +136,7 @@ trait Management
 
     private function getReceipt(string $deviceId,string $kind,string $id): ?array
     {
-        $row=$this->q("SELECT payload,created_at FROM {$this->t('receipts')} WHERE device_id=? AND kind=? AND id=?",[$deviceId,$kind,$id])->fetch();
+        $row=$this->q("SELECT payload,created_at FROM {$this->t('records')} WHERE scope='receipt' AND device_id=? AND kind=? AND id=?",[$deviceId,$kind,$id])->fetch();
         if (!$row) return null;
         $annotation=$this->annotation($deviceId,$kind,$id);
         return $annotation['deleted'] ? null : ['id'=>$id,'receivedAt'=>(int)$row['created_at'],'data'=>json_decode($row['payload'],true,32,JSON_THROW_ON_ERROR),'metadata'=>$annotation['metadata']];
@@ -153,25 +153,25 @@ trait Management
     {
         return $this->store->transaction(function () use ($deviceId,$kind,$id): bool {
             if (!$this->getReceipt($deviceId,$kind,$id)) return false;
-            $this->q("UPDATE {$this->t('receipts')} SET payload='{}' WHERE device_id=? AND kind=? AND id=?",[$deviceId,$kind,$id]);
+            $this->q("UPDATE {$this->t('records')} SET payload='{}' WHERE scope='receipt' AND device_id=? AND kind=? AND id=?",[$deviceId,$kind,$id]);
             $this->saveAnnotation($deviceId,$kind,$id,[],true);
             $type=$kind==='incoming' ? 'sms.received' : 'sms.status';
-            foreach ($this->q("SELECT id,payload FROM {$this->t('outbox')} WHERE device_id=? AND type=? AND acknowledged=0",[$deviceId,$type])->fetchAll() as $event) {
-                if ((json_decode($event['payload'],true,32,JSON_THROW_ON_ERROR)['id'] ?? null)===$id) $this->q("UPDATE {$this->t('outbox')} SET payload='{}',acknowledged=1 WHERE id=?",[$event['id']]);
+            foreach ($this->q("SELECT id,payload FROM {$this->t('records')} WHERE scope='event' AND device_id=? AND kind=? AND acknowledged=0",[$deviceId,$type])->fetchAll() as $event) {
+                if ((json_decode($event['payload'],true,32,JSON_THROW_ON_ERROR)['id'] ?? null)===$id) $this->q("UPDATE {$this->t('records')} SET payload='{}',acknowledged=1 WHERE scope='event' AND id=?",[$event['id']]);
             }
             return true;
         });
     }
     private function annotation(string $deviceId,string $kind,string $id): array
     {
-        $row=$this->q("SELECT metadata,deleted FROM {$this->t('annotations')} WHERE device_id=? AND kind=? AND id=?",[$deviceId,$kind,$id])->fetch();
+        $row=$this->q("SELECT metadata,deleted FROM {$this->t('records')} WHERE scope='annotation' AND device_id=? AND kind=? AND id=?",[$deviceId,$kind,$id])->fetch();
         return $row ? ['metadata'=>json_decode($row['metadata'],true,32,JSON_THROW_ON_ERROR),'deleted'=>(bool)$row['deleted']] : ['metadata'=>[],'deleted'=>false];
     }
     private function saveAnnotation(string $deviceId,string $kind,string $id,array $metadata,bool $deleted): void
     {
-        if ($this->q("SELECT id FROM {$this->t('annotations')} WHERE device_id=? AND kind=? AND id=?",[$deviceId,$kind,$id])->fetchColumn()!==false) {
-            $this->q("UPDATE {$this->t('annotations')} SET metadata=?,deleted=? WHERE device_id=? AND kind=? AND id=?",[Support::json($metadata),(int)$deleted,$deviceId,$kind,$id]);
-        } else $this->q("INSERT INTO {$this->t('annotations')} (device_id,kind,id,metadata,deleted) VALUES (?,?,?,?,?)",[$deviceId,$kind,$id,Support::json($metadata),(int)$deleted]);
+        if ($this->q("SELECT id FROM {$this->t('records')} WHERE scope='annotation' AND device_id=? AND kind=? AND id=?",[$deviceId,$kind,$id])->fetchColumn()!==false) {
+            $this->q("UPDATE {$this->t('records')} SET metadata=?,deleted=? WHERE scope='annotation' AND device_id=? AND kind=? AND id=?",[Support::json($metadata),(int)$deleted,$deviceId,$kind,$id]);
+        } else $this->q("INSERT INTO {$this->t('records')} (scope,device_id,kind,id,metadata,deleted) VALUES ('annotation',?,?,?,?,?)",[$deviceId,$kind,$id,Support::json($metadata),(int)$deleted]);
     }
     private function metadata(mixed $value): array
     {

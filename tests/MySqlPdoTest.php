@@ -84,8 +84,7 @@ final class MySqlPdoTest extends TestCase
             // Tear down only temporary tables created under this test's random prefix.
             unset($fresh, $gateway);
             foreach ([
-                'annotations', 'outbox', 'receipts', 'batches', 'claims',
-                'jobs', 'installations', 'enrollments', 'devices', 'meta',
+                'records', 'jobs', 'installations', 'devices', 'meta',
             ] as $table) {
                 $store->query('DROP TABLE IF EXISTS ' . $store->table($table));
             }

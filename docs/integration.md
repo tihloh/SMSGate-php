@@ -41,7 +41,7 @@ $sms = \Tihloh\SmsGate\Gateway::sqlite(__DIR__.'/private/smsgate.sqlite');
 $sms = \Tihloh\SmsGate\Gateway::pdo($pdo, prefix: 'smsgate_');
 ```
 
-The SQLite parent directory and missing tables are created automatically. `installSchema()` remains an optional explicit deployment command. Supported PDO drivers are SQLite and MySQL. Use a dedicated PDO outside host transactions because SMSGate owns its short transactions. Missing version-one tables are restored without deleting existing rows; unsupported future schema versions fail instead of silently migrating.
+The SQLite parent directory and missing tables are created automatically. `installSchema()` remains an optional explicit deployment command. Supported PDO drivers are SQLite and MySQL. Use a dedicated PDO outside host transactions because SMSGate owns its short transactions. Fresh installations use the five-table version-two schema. Missing tables are created only when the SDK is allowed to initialize its storage; existing schema version-one databases must be explicitly migrated before upgrading the package. A mismatched schema version fails closed.
 
 ## Business callbacks initiated by Android
 
