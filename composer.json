@@ -3,18 +3,65 @@
   "description": "Framework-independent SMSGate integration: approved Android gateways, personalized SMS queues, and durable incoming events.",
   "type": "library",
   "license": "MIT",
-  "keywords": ["sms", "android", "gateway", "smsgate"],
-  "authors": [{"name": "Christian Borsal Bustamante", "homepage": "https://github.com/tihloh"}],
+  "keywords": [
+    "sms",
+    "android",
+    "gateway",
+    "smsgate"
+  ],
+  "authors": [
+    {
+      "name": "Christian Borsal Bustamante",
+      "homepage": "https://github.com/tihloh"
+    }
+  ],
   "require": {
     "php": "^8.2",
     "ext-pdo": "*",
     "ext-json": "*"
   },
-  "require-dev": {"phpunit/phpunit": "^10.5"},
-  "suggest": {"ext-pdo_sqlite": "SQLite storage", "ext-pdo_mysql": "MySQL storage"},
-  "autoload": {"psr-4": {"Tihloh\\SmsGate\\": "src/"}},
-  "autoload-dev": {"psr-4": {"Tihloh\\SmsGate\\Tests\\": "tests/"}},
-  "scripts": {"test": "phpunit", "check": ["@composer validate --strict", "@test"]},
-  "config": {"sort-packages": true, "allow-plugins": false},
-  "archive": {"exclude": ["/tests", "/.github", "/phpunit.xml", "/composer.lock", "/.phpunit.cache", "/vendor", "/examples/private"]}
+  "require-dev": {
+    "phpunit/phpunit": "^10.5"
+  },
+  "suggest": {
+    "ext-pdo_sqlite": "SQLite storage",
+    "ext-pdo_mysql": "MySQL storage"
+  },
+  "autoload": {
+    "psr-4": {
+      "Tihloh\\SmsGate\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Tihloh\\SmsGate\\Tests\\": "tests/"
+    }
+  },
+  "scripts": {
+    "test": "phpunit",
+    "check": [
+      "@composer validate --strict",
+      "@test"
+    ]
+  },
+  "config": {
+    "sort-packages": true,
+    "allow-plugins": false
+  },
+  "archive": {
+    "exclude": [
+      "/tests",
+      "/.github",
+      "/phpunit.xml",
+      "/composer.lock",
+      "/.phpunit.cache",
+      "/vendor",
+      "/examples/private"
+    ]
+  },
+  "homepage": "https://github.com/tihloh/SMSGate-php",
+  "support": {
+    "source": "https://github.com/tihloh/SMSGate-php",
+    "issues": "https://github.com/tihloh/SMSGate-php/issues"
+  }
 }

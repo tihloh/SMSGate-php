@@ -5,14 +5,14 @@ The package lives in `packages/php`, separate from the Android and example-serve
 ## Before publishing
 
 1. Run `composer check`, the concurrency tests, and the MySQL CI suite. Review API names, supported PHP versions, README examples, license, and operational boundaries.
-2. Put the **contents of `packages/php` at the root of a dedicated package repository**, or use a subtree-split release process. Pointing Packagist at the Android monorepo root will not discover a nested composer.json automatically.
-3. Verify the package name is available under your publisher account. Add actual package repository/support URLs to composer.json once created.
-4. Tag a release only after review (for example an initial `v0.1.0`). Do not hardcode a `version` field in composer.json; Composer derives it from tags.
-5. Submit that repository to Packagist and configure its update hook. Only after publication can developers use a normal `composer require tihloh/smsgate` without a custom repository.
+2. Confirm the public [SMSGate-php](https://github.com/tihloh/SMSGate-php) repository mirrors `packages/php` at the repository root. Never point Packagist at the private Android monorepo.
+3. Verify the Composer package name is available under your Packagist account. The package's public repository and support URLs are recorded in `composer.json`.
+4. In the **public** PHP repository, use **Actions → Release PHP package → Run workflow** with a reviewed semantic version (for example `0.1.0`). This runs package tests, creates a `v0.1.0` tag, and publishes a GitHub release. Do not hardcode a `version` field in composer.json; Composer derives it from Git tags.
+5. Submit `https://github.com/tihloh/SMSGate-php` to Packagist once using your publisher account, and configure the GitHub/Packagist update hook. Only after publication can developers use `composer require tihloh/smsgate` without a custom repository.
 
-No repository, tag, Packagist submission, or deployment is created by the local implementation. Those publishing actions require the owner's account and chosen repository destination.
+The public repository exists, but neither a GitHub release tag nor Packagist registration is implied by copying these files. Perform the release workflow and Packagist submission explicitly.
 
-CI is defined in the monorepo's `.github/workflows/php-package.yml`. When splitting to a dedicated repository, copy that workflow and remove its `packages/php` working-directory/path prefixes. The MySQL test job uses a disposable MySQL 8.0 service. For a local disposable MySQL test database, set `SMSGATE_TEST_MYSQL_DSN`, `SMSGATE_TEST_MYSQL_USER`, and `SMSGATE_TEST_MYSQL_PASSWORD` before `composer test`; each test uses and drops only its own randomly prefixed tables.
+CI is available both in the source monorepo and the public package repository. Public CI runs from the Composer package root. The MySQL test job uses a disposable MySQL 8.0 service. For a local disposable MySQL test database, set `SMSGATE_TEST_MYSQL_DSN`, `SMSGATE_TEST_MYSQL_USER`, and `SMSGATE_TEST_MYSQL_PASSWORD` before `composer test`; each test uses and drops only its own randomly prefixed tables.
 
 ## Private installation
 

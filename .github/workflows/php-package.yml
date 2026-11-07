@@ -1,0 +1,51 @@
+name: PHP Composer package CI
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sqlite:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: ['8.2', '8.3', '8.4']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '${{ matrix.php }}'
+          extensions: pdo_sqlite
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist
+      - run: composer check
+  mysql:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: smsgate_test
+          MYSQL_USER: smsgate_test
+          MYSQL_PASSWORD: integration-test-only
+          MYSQL_ROOT_PASSWORD: integration-root-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_mysql, pdo_sqlite
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist
+      - run: composer test
+        env:
+          SMSGATE_TEST_MYSQL_DSN: 'mysql:host=127.0.0.1;port=3306;dbname=smsgate_test;charset=utf8mb4'
+          SMSGATE_TEST_MYSQL_USER: smsgate_test
+          SMSGATE_TEST_MYSQL_PASSWORD: integration-test-only

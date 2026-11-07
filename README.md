@@ -4,7 +4,7 @@
 
 It includes approved device installations, hashed device tokens and rotation, personalized bulk jobs, persistent claims and acknowledgements, incoming SMS, delivery-status tracking, durable integration events, QR-compatible setup JSON, and a plain PHP request processor. It has no runtime library dependency beyond PHP, PDO, and JSON.
 
-**Package status:** source is mirrored to [tihloh/SMSGate-php](https://github.com/tihloh/SMSGate-php). Packagist publication remains pending. Installation from a local Composer path repository works now. A public `composer require tihloh/smsgate` requires publishing the package first. See [release instructions](docs/releasing.md).
+**Package status:** maintained in the private SMSGate monorepo and mirrored to the [public SMSGate-php repository](https://github.com/tihloh/SMSGate-php), with `composer.json` at the repository root. Packagist registration is separate and has not been completed. Until it is registered, use the local path installation below. See [release instructions](docs/releasing.md).
 
 ## Install locally today
 
