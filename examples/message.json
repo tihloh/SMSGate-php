@@ -1,0 +1,9 @@
+{
+  "idempotencyKey": "obr-notification-example-0001",
+  "values": {"organization": "Provincial Budget Office"},
+  "recipients": [
+    {"number": "+639171234567", "values": {"name": "Juan", "obr_no": "2026-00123", "amount": "12500.00"}},
+    {"number": "+639181234567", "values": {"name": "Maria", "obr_no": "2026-00124", "amount": "8500.00"}}
+  ],
+  "body": "Hi {{name}}, your OBR {{obr_no}} for ₱{{amount}} was processed by {{organization}}."
+}
