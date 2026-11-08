@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0 - 2026-11-08
+
+- Added `Gateway::mysql()` with automatic creation of a missing MySQL database and preservation of existing databases and unrelated tables.
+- Added native pairing QR images: `SetupProfile::qrSvg()`, `qrPng()`, `qrDataUri()`, plus enrollment convenience methods.
+- Added MySQL provisioning and QR image tests, setup instructions and examples.
+
 ## 0.1.1 - 2026-11-07
 
 - Verified native PDO MySQL support against MySQL 8.0, including schema installation, persistence across separate connections, durable claim replay, JSON filters, and transaction rollback.

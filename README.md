@@ -2,7 +2,7 @@
 
 **`tihloh/smsgate`** is a Composer library for integrating the SMSGate Android app into your own PHP application. It is independent of the example servers, has no framework dependency, and does not start a server, create routes, or migrate a database during Composer installation.
 
-It includes approved device installations, hashed device tokens and rotation, personalized bulk jobs, persistent claims and acknowledgements, incoming SMS, delivery-status tracking, durable integration events, QR-compatible setup JSON, and a plain PHP request processor. It has no runtime library dependency beyond PHP, PDO, and JSON.
+It includes approved device installations, hashed device tokens and rotation, personalized bulk jobs, persistent claims and acknowledgements, incoming SMS, delivery-status tracking, durable integration events, QR-compatible setup JSON, and a plain PHP request processor. It uses `bacon/bacon-qr-code` for QR images (XMLWriter for SVG; GD also required for PNG).
 
 **Package status:** maintained in the private SMSGate monorepo and mirrored to the [public SMSGate-php repository](https://github.com/tihloh/SMSGate-php), with `composer.json` at the repository root. Packagist registration is separate and has not been completed. Until it is registered, use the local path installation below. See [release instructions](docs/releasing.md).
 
@@ -94,7 +94,17 @@ $enrollment = $gateway->createEnrollment();
 $setupJson = $enrollment->setup('https://your-domain.example/sms-gateway', 'Your organization')->toJson();
 ```
 
-Encode `$setupJson` directly in a QR, or supply it as a setup file. The app recognizes this format:
+SMSGate **generates the QR image itself**. The host only displays it:
+
+```php
+$profile = $enrollment->setup('https://your-domain.example/sms-gateway', 'Your organization');
+$src = htmlspecialchars($profile->qrDataUri(), ENT_QUOTES, 'UTF-8');
+echo '<img src="' . $src . '" width="320" height="320" alt="Scan with SMSGate to pair">';
+```
+
+`qrSvg()` returns SVG markup; `qrPng()` returns PNG bytes when GD is enabled; and `qrDataUri('svg')` or `qrDataUri('png')` returns a data URI for the host `<img>`. The QR contains the token: render only in authenticated admin pages with `Cache-Control: no-store`.
+
+The Android app recognizes this JSON payload in the QR:
 
 ```json
 {"version":1,"url":"https://your-domain.example/sms-gateway","operator":"Your organization","token":"GENERATED_DEVICE_TOKEN"}
@@ -102,7 +112,7 @@ Encode `$setupJson` directly in a QR, or supply it as a setup file. The app reco
 
 The `url` is the single exact POST endpoint. No `/v1/` prefix or additional route configuration is assumed.
 
-The setup profile also offers `toArray()`. Generate a QR directly from `toJson()`, or save that JSON as the setup file. Keep all exports private. Debug output redacts credentials, but explicit token/export methods return secrets.
+The setup profile also offers `toArray()` and `toJson()` for an imported setup file. The enrollment object also offers `$enrollment->qrDataUri($url, $operator)`. Keep all exports private. Debug output redacts credentials, but explicit token/export methods return secrets.
 
 When the configured phone first uses **Test connection**, it sends its own gateway name. The one-time enrollment then creates its gateway record and a **pending** installation. Obtain the server `deviceId` from the test response or the `device.enrolled` integration event, then list and approve that specific installation:
 

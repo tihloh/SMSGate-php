@@ -20,5 +20,49 @@ final class SetupProfile
 
     public function toArray(): array { return ['version' => 1, 'url' => $this->url, 'operator' => $this->operator, 'token' => $this->token]; }
     public function toJson(): string { return Support::json($this->toArray()); }
+
+    /**
+     * Return a ready-to-display pairing QR image (no filesystem or host-side
+     * QR library needed). SVG is the default to avoid requiring the GD extension.
+     * The QR encodes this exact setup JSON and therefore contains a bearer token.
+     */
+    public function qrSvg(int $size = 400): string
+    {
+        self::checkQrSize($size);
+        $renderer = new \BaconQrCode\Renderer\ImageRenderer(
+            new \BaconQrCode\Renderer\RendererStyle\RendererStyle($size),
+            new \BaconQrCode\Renderer\Image\SvgImageBackEnd()
+        );
+        return (new \BaconQrCode\Writer($renderer))->writeString($this->toJson());
+    }
+
+    /** Return PNG image bytes when the server has PHP GD enabled. */
+    public function qrPng(int $size = 400): string
+    {
+        self::checkQrSize($size);
+        if (!extension_loaded('gd')) {
+            throw new \RuntimeException('PHP GD is required to generate a PNG QR image. Use qrSvg() instead.');
+        }
+        return (new \BaconQrCode\Writer(
+            new \BaconQrCode\Renderer\GDLibRenderer($size)
+        ))->writeString($this->toJson());
+    }
+
+    /** Embed directly into a private HTML <img src="..."> without image files. */
+    public function qrDataUri(string $format = 'svg', int $size = 400): string
+    {
+        return match (strtolower($format)) {
+            'svg' => 'data:image/svg+xml;base64,' . base64_encode($this->qrSvg($size)),
+            'png' => 'data:image/png;base64,' . base64_encode($this->qrPng($size)),
+            default => throw new \InvalidArgumentException('QR image format must be svg or png.'),
+        };
+    }
+
+    private static function checkQrSize(int $size): void
+    {
+        if ($size < 240 || $size > 1600) {
+            throw new \InvalidArgumentException('QR image size must be between 240 and 1600 pixels.');
+        }
+    }
     public function __debugInfo(): array { return ['url' => $this->url, 'operator' => $this->operator, 'token' => '[redacted]']; }
 }

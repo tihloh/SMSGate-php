@@ -93,4 +93,47 @@ final class ProcessorTest extends TestCase
         self::assertSame($profile->toArray(),json_decode($profile->toJson(),true));
         ob_start(); var_dump($profile); $dump=ob_get_clean(); self::assertStringNotContainsString('test-token',$dump);
     }
+
+    public function testPairingQrImageIsGeneratedByThePackage(): void
+    {
+        $profile = new SetupProfile(
+            'https://example.org/smsgate/api',
+            'Office integration',
+            'private-pairing-token'
+        );
+        $svg = $profile->qrSvg();
+        self::assertStringContainsString('<svg', $svg);
+        self::assertStringContainsString('</svg>', $svg);
+        self::assertStringNotContainsString('private-pairing-token', $svg);
+
+        $uri = $profile->qrDataUri();
+        self::assertStringStartsWith('data:image/svg+xml;base64,', $uri);
+        self::assertSame($svg, base64_decode(substr($uri, strlen('data:image/svg+xml;base64,')), true));
+
+        $gateway = Gateway::sqlite(':memory:');
+        $enrollment = $gateway->createEnrollment();
+        $fromEnrollment = $enrollment->qrDataUri('https://example.org/smsgate', 'Office');
+        self::assertStringStartsWith('data:image/svg+xml;base64,', $fromEnrollment);
+        self::assertStringContainsString('<svg', $enrollment->qrSvg('https://example.org/smsgate', 'Office'));
+
+        if (extension_loaded('gd')) {
+            self::assertStringStartsWith("\x89PNG\r\n\x1a\n", $profile->qrPng());
+            self::assertStringStartsWith('data:image/png;base64,', $profile->qrDataUri('png'));
+        }
+    }
+
+    public function testPairingQrRejectsUnsupportedSizeAndFormats(): void
+    {
+        $profile = new SetupProfile('https://example.org/api', 'Office', 'secret-token');
+        foreach ([0, 100, 2000] as $size) {
+            try {
+                $profile->qrSvg($size);
+                self::fail('Expected invalid QR dimensions');
+            } catch (\InvalidArgumentException) {
+                self::assertTrue(true);
+            }
+        }
+        $this->expectException(\InvalidArgumentException::class);
+        $profile->qrDataUri('pdf');
+    }
 }

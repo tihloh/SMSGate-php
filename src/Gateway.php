@@ -4,6 +4,7 @@ namespace Tihloh\SmsGate;
 
 use PDO;
 use Tihloh\SmsGate\Exception\GatewayException;
+use Tihloh\SmsGate\Storage\MySqlDatabase;
 use Tihloh\SmsGate\Storage\PdoStore;
 
 /** Trusted CRUD/business API. Expose only process() to Android device requests. */
@@ -31,6 +32,23 @@ final class Gateway
         return new self(new PdoStore(new PDO('sqlite:' . $path)));
     }
     public static function pdo(PDO $pdo, string $prefix = 'smsgate_'): self { return new self(new PdoStore($pdo, $prefix)); }
+
+    /**
+     * Use an existing MySQL database, or create the named database when absent.
+     * The provided prefix identifies this package's five tables, not a single
+     * table. A separate PDO connection is created for SMSGate transactions.
+     *
+     * Missing databases require CREATE privilege; an existing database does not.
+     */
+    public static function mysql(
+        string $dsn,
+        string $username,
+        #[\SensitiveParameter] string $password,
+        string $prefix = 'smsgate_',
+        array $options = []
+    ): self {
+        return self::pdo(MySqlDatabase::connect($dsn, $username, $password, $options), $prefix);
+    }
     public function process(string|array|null $request = null, ?array $data = null, #[\SensitiveParameter] ?string $token = null, ?string $idempotencyKey = null): Http\Response
     {
         return (new Http\Processor($this))->process($request, $data, $token, $idempotencyKey);

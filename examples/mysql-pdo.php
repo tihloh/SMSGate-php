@@ -12,18 +12,13 @@ $dsn = getenv('SMSGATE_MYSQL_DSN')
 $username = getenv('SMSGATE_MYSQL_USER') ?: '';
 $password = getenv('SMSGATE_MYSQL_PASSWORD') ?: '';
 
-$pdo = new PDO($dsn, $username, $password, [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    PDO::ATTR_EMULATE_PREPARES => false,
-]);
+// Creates the requested MySQL database when missing (with CREATE privilege),
+// then ensures the five SMSGate tables exist. Other tables are preserved.
+$gateway = Gateway::mysql($dsn, $username, $password, 'smsgate_');
 
-// Use a *dedicated* PDO connection; SMSGate manages its own transactions.
-// Missing smsgate_ tables are created on first use by this constructor.
-$gateway = Gateway::pdo($pdo, 'smsgate_');
-
-// Optional deployment command; safe to repeat:
-// $gateway->installSchema();
+// If you already have a *dedicated* PDO connection to an existing database,
+// the original API is also available: Gateway::pdo($pdo, 'smsgate_').
+// No mysqli adapter or separate SQL installation script is necessary.
 
 // The gateway is ready for trusted CRUD calls or for ->process() in your endpoint.
 // Never expose database credentials or registration/admin methods to devices.

@@ -90,4 +90,105 @@ final class MySqlPdoTest extends TestCase
             }
         }
     }
+
+    public function testMySqlFactoryReusesExistingDatabaseWithoutTouchingHostTables(): void
+    {
+        $dsn = getenv('SMSGATE_TEST_MYSQL_DSN');
+        if (!$dsn) self::markTestSkipped('MySQL integration environment required.');
+
+        $user = getenv('SMSGATE_TEST_MYSQL_USER') ?: '';
+        $password = getenv('SMSGATE_TEST_MYSQL_PASSWORD') ?: '';
+        $prefix = 'test_factory_' . bin2hex(random_bytes(5)) . '_';
+        $hostTable = 'host_records_' . bin2hex(random_bytes(5));
+        $pdo = new PDO($dsn, $user, $password);
+        $pdo->exec('CREATE TABLE ' . chr(96) . $hostTable . chr(96) .
+            ' (id INTEGER PRIMARY KEY, note VARCHAR(40) NOT NULL) ENGINE=InnoDB');
+        $pdo->exec('INSERT INTO ' . chr(96) . $hostTable . chr(96) . " (id,note) VALUES (1,'untouched')");
+
+        try {
+            $gateway = Gateway::mysql($dsn, $user, $password, $prefix);
+            $device = $gateway->registerDevice('Persistent MySQL device');
+            $reused = Gateway::mysql($dsn, $user, $password, $prefix);
+            self::assertSame($device->id, $reused->devices()[0]['id']);
+
+            $tables = array_map(
+                static fn(string $table): string => $prefix . $table,
+                ['meta', 'devices', 'installations', 'jobs', 'records']
+            );
+            $stmt = $pdo->prepare(
+                'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() ' .
+                'AND table_name IN (?,?,?,?,?)'
+            );
+            $stmt->execute($tables);
+            self::assertSame(5, (int)$stmt->fetchColumn());
+            self::assertSame(
+                'untouched',
+                $pdo->query('SELECT note FROM ' . chr(96) . $hostTable . chr(96) . ' WHERE id=1')->fetchColumn()
+            );
+        } finally {
+            unset($reused, $gateway);
+            foreach (['records', 'jobs', 'installations', 'devices', 'meta'] as $table) {
+                $pdo->exec('DROP TABLE IF EXISTS ' . $prefix . $table);
+            }
+            $pdo->exec('DROP TABLE IF EXISTS ' . chr(96) . $hostTable . chr(96));
+        }
+    }
+
+    public function testMySqlFactoryCreatesAbsentDatabaseAndFiveTables(): void
+    {
+        $dsn = getenv('SMSGATE_TEST_MYSQL_DSN');
+        $adminUser = getenv('SMSGATE_TEST_MYSQL_ADMIN_USER');
+        $adminPassword = getenv('SMSGATE_TEST_MYSQL_ADMIN_PASSWORD');
+        if (!$dsn || !$adminUser || $adminPassword === false) {
+            self::markTestSkipped('MySQL database-creation integration credentials required.');
+        }
+        $database = 'smsgate_ci_' . bin2hex(random_bytes(6));
+        $newDsn = preg_replace('/dbname=[^;]+/', 'dbname=' . $database, $dsn, 1, $count);
+        self::assertSame(1, $count);
+        $serverDsn = preg_replace('/(?:^|;)dbname=[^;]+/', '', $dsn, 1);
+        $admin = new PDO($serverDsn, $adminUser, $adminPassword);
+        $prefix = 'smsgate_';
+
+        self::assertSame(
+            0,
+            (int)$admin->query(
+                "SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name=" .
+                $admin->quote($database)
+            )->fetchColumn()
+        );
+
+        try {
+            $gateway = Gateway::mysql($newDsn, $adminUser, $adminPassword, $prefix);
+            $device = $gateway->registerDevice('New database gateway');
+            $again = Gateway::mysql($newDsn, $adminUser, $adminPassword, $prefix);
+            self::assertSame($device->id, $again->devices()[0]['id']);
+            $databasePdo = new PDO($newDsn, $adminUser, $adminPassword);
+            $stmt = $databasePdo->query(
+                "SELECT COUNT(*) FROM information_schema.tables " .
+                "WHERE table_schema=DATABASE() AND table_name LIKE 'smsgate_%'"
+            );
+            self::assertSame(5, (int)$stmt->fetchColumn());
+        } finally {
+            unset($again, $gateway, $databasePdo);
+            $admin->exec('DROP DATABASE IF EXISTS ' . chr(96) . $database . chr(96));
+        }
+    }
+
+    public function testMySqlFactoryRejectsUnsafeDatabaseNames(): void
+    {
+        foreach ([
+            'mysql:host=127.0.0.1;dbname=app;DROP DATABASE app',
+            'mysql:host=127.0.0.1;dbname=mysql',
+            'mysql:host=127.0.0.1;dbname=',
+            'sqlite::memory:',
+            'mysql:host=127.0.0.1;dbname=app;dbname=other',
+        ] as $dsn) {
+            try {
+                Gateway::mysql($dsn, 'unused', 'unused');
+                self::fail('Expected invalid DSN to be rejected: ' . $dsn);
+            } catch (\InvalidArgumentException) {
+                self::assertTrue(true);
+            }
+        }
+    }
 }

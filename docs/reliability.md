@@ -16,11 +16,11 @@ Approval is checked under the same transaction coordination as device operations
 - The package does not publish an endpoint, dashboard, webhooks, background workers, or framework-specific service providers. The Android request selects its action and your application uses trusted CRUD methods.
 - Start with a fresh prefix and explicitly enroll/approve phones. Migrating queued/in-flight SMS from another implementation needs an operator-reviewed plan to avoid duplicate sending.
 - No retention cleanup runs automatically. Jobs, claims, receipts, batches, and review records persist. Acknowledging outbox events clears their extra payload copy, not the source message. Establish your own retention/backups and storage monitoring; deleting deduplication/claim records can permit replay. Do not simply delete the database to clear a backlog.
-- Missing version-one tables are added automatically on first use. `installSchema()` is an optional explicit deployment step. The library rejects unsupported schema versions and does not perform future version upgrades implicitly. Back up before future migrations.
+- Missing version-two tables are added automatically on first use. `installSchema()` is an optional explicit deployment step. The library rejects unsupported schema versions and does not perform future version upgrades implicitly. Back up before future migrations.
 
 ## Deployment
 
-Keep SQLite files outside the document root and use restrictive filesystem permissions. SQLite needs write access to its directory for journal files. For MySQL, use a dedicated user; schema installation needs CREATE/INDEX, runtime needs SELECT/INSERT/UPDATE/DELETE on the package tables. DROP is needed by disposable integration-test cleanup, not runtime use. Configure utf8mb4. Keep the connection separate from any host-application transaction.
+Keep SQLite files outside the document root and use restrictive filesystem permissions. SQLite needs write access to its directory for journal files. For MySQL, use a dedicated user; database creation needs CREATE privilege on the requested schema, missing-table installation needs CREATE/INDEX, and runtime needs SELECT/INSERT/UPDATE/DELETE on package tables. An existing database does not need database-creation rights. DROP is needed by disposable integration-test cleanup, not runtime use. Configure utf8mb4. Keep the connection separate from any host-application transaction.
 
 TLS, endpoint rate limiting, tenant/admin authorization, log policy, retention, and backup access belong to the host application. HTTP remains compatible with the phone but is unencrypted. Do not enable token-bearing cross-origin browser APIs unnecessarily; these routes are device-server communication, not a browser dashboard.
 

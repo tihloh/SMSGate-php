@@ -1,6 +1,6 @@
 {
   "name": "tihloh/smsgate",
-  "description": "Framework-independent SMSGate integration: approved Android gateways, personalized SMS queues, and durable incoming events.",
+  "description": "Framework-independent SMS gateway for Android with PDO MySQL/SQLite, automatic database setup, pairing QR images and reliable SMS queues.",
   "type": "library",
   "license": "MIT",
   "keywords": [
@@ -18,14 +18,17 @@
   "require": {
     "php": "^8.2",
     "ext-pdo": "*",
-    "ext-json": "*"
+    "ext-json": "*",
+    "bacon/bacon-qr-code": "^3.1",
+    "ext-xmlwriter": "*"
   },
   "require-dev": {
     "phpunit/phpunit": "^10.5"
   },
   "suggest": {
     "ext-pdo_sqlite": "SQLite storage",
-    "ext-pdo_mysql": "MySQL storage"
+    "ext-pdo_mysql": "MySQL storage",
+    "ext-gd": "Optional: generates PNG pairing QR codes (SVG works without GD)"
   },
   "autoload": {
     "psr-4": {
