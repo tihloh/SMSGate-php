@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.2 - 2026-11-08
+
+- Added a host-facing `Gateway::api()` facade with list, queue, inbox, status, pairing, installation, and event operations.
+- The host supplies its existing database object and calls API methods; SMSGate alone owns table names, SQL, schema initialization, and durable records.
+- Retained existing direct Gateway methods for compatibility and kept trusted host methods separate from the Android `process()` endpoint.
+- Added tests for host-only API integration, queue idempotency, pairing image output and preservation of host tables.
+
 ## 0.2.1 - 2026-11-08
 
 - Added host-first `Gateway::database($database, $prefix)` accepting plain PDO or a Prefab-style object exposing `pdo(): PDO`.

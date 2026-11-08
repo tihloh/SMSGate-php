@@ -76,6 +76,9 @@ final class Gateway
     {
         return (new Http\Processor($this))->process($request, $data, $token, $idempotencyKey);
     }
+    /** Host-facing API: lists, queues, inbox, pairing and administration, without SQL. */
+    public function api(): HostApi { return new HostApi($this); }
+
     public function installSchema(): void { $this->store->install(); }
     private function now(): int { return ($this->clock)(); }
     private function t(string $table): string { return $this->store->table($table); }

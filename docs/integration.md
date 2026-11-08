@@ -67,6 +67,42 @@ Callbacks are at-least-once. Deduplicate your side effects by event ID. Multiple
 
 Event types: `device.pending`, `device.approved`, `device.blocked`, `device.updated`, `device.enabled`, `device.disabled`, `device.token_rotated`, `job.cancelled`, `sms.received`, and `sms.status`.
 
+## Host application API: lists, jobs, inbox and pairing
+
+After passing the host-managed database object, use the dedicated host API
+instead of querying SMSGate tables:
+
+```php
+$gateway = \Tihloh\SmsGate\Gateway::database($database, 'smsgate_');
+$api = $gateway->api();
+
+$devices = $api->listDevices(limit: 100, offset: 0);
+$installations = $api->listInstallations($deviceId);
+$jobs = $api->listJobs(['deviceId' => $deviceId, 'state' => 'QUEUED']);
+$deviceJobs = $api->listDeviceJobs($deviceId);
+$inbox = $api->listInbox(['sender' => '+639171234567']);
+$statuses = $api->listStatuses(['deviceId' => $deviceId]);
+
+$queued = $api->queueSms($deviceId, ['+639171234567'], 'Hello', requestKey: $stableId);
+$api->cancelJob($queued['jobIds'][0]);
+$api->updateInbox($deviceId, $messageId, ['read' => true]);
+
+$pairing = $api->createPairing('https://example.org/smsgate', 'My Office');
+// $pairing = ['enrollmentId' => '...', 'image' => 'data:image/svg+xml;base64,...']
+$api->approveInstallation($deviceId, $installationId);
+```
+
+The host provides a PDO or Prefab-style database object only once. SMSGate
+owns its schema initialization, internal SQL, idempotency, tracking and
+safe mutations. The five-table schema remains internal; no direct host SQL
+or hard-coded table names are necessary. The host controls its own UI,
+authentication and authorization, and must not expose these trusted host
+methods to untrusted HTTP users. Pairing QR data URIs carry enrollment
+credentials and require a private, no-store response.
+
+The existing direct Gateway CRUD methods remain available for compatibility.
+`Gateway::process()` is the restricted Android API; it cannot call host
+administration methods.
 ## Developer CRUD API
 
 ## Single and multi-gateway deployments

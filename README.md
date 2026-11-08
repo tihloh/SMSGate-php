@@ -64,7 +64,41 @@ See [host PDO and MySQL integration](docs/mysql-pdo.md) and the
 and `smsgate_records`. Missing tables are installed on first use; legacy
 version-one SMSGate schemas require deliberate migration.
 
-### 2. Process the single Android endpoint
+### 2. Use SMSGate's host API (no SQL needed)
+
+The host provides the database object once. **SMSGate owns its tables, SQL,
+schema checks, safe initialization, and records.** The host only calls the library API
+and renders returned arrays or the pairing image:
+
+```php
+$api = $gateway->api();
+
+$devices = $api->listDevices();
+$jobs = $api->listJobs(['state' => 'QUEUED'], limit: 50);
+$inbox = $api->listInbox(['deviceId' => $deviceId], limit: 50);
+$reports = $api->listStatuses(['deviceId' => $deviceId]);
+
+$result = $api->queueSms(
+    $deviceId,
+    ['+639171234567'],
+    'Your application message',
+    requestKey: $yourStableRequestId
+);
+
+$pairing = $api->createPairing('https://example.org/smsgate', 'Office');
+// The host UI merely displays $pairing['image'] in an <img src> attribute.
+// Keep pairing output private: the image contains an enrollment token.
+```
+
+Other host API methods handle installations, approval, job cancellation,
+status/inbox updates, and integration events. The API returns plain PHP arrays.
+**Host authentication and permissions are still the host's responsibility.**
+The host API is trusted server-side PHP, not a public HTTP endpoint.
+
+Android uses the separate, restricted `$gateway->process()` API below;
+do not expose host administration methods through the Android endpoint.
+
+### 3. Process the single Android endpoint
 
 ```php
 if ($requestIsPost) {
