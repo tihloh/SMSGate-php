@@ -4,7 +4,33 @@ SMSGate supports **PDO MySQL** as well as PDO SQLite. It requires PHP 8.2+, the
 `pdo` and `pdo_mysql` extensions, and a MySQL database using InnoDB tables.
 No `mysqli` or framework adapter is required.
 
-## Connect to an existing MySQL database — or create it automatically
+## Preferred: pass the host database object
+
+SMSGate does not need a separate database connection configuration.
+Use the PDO instance or Prefab DatabaseManager already provided by the host:
+
+```php
+use Tihloh\SmsGate\Gateway;
+
+$smsgate = Gateway::database($database, 'smsgate_');
+```
+
+`$database` may be a PDO or an object with a public `pdo(): PDO` method,
+such as `Tihloh\Prefab\Database\Services\DatabaseManager`. The host decides
+the database name, credentials and connection. SMSGate creates only missing
+tables with the chosen prefix; all existing host tables are preserved.
+
+The host-provided connection must not be inside another active transaction:
+SMSGate commits its own queue, claim and receipt transactions. If your host
+needs separate transactions, pass a separate PDO managed by that host.
+
+**Database creation distinction:** a host-provided database object is already
+connected to a database, so the **host** must create or select that database.
+An optional standalone factory is still available when SMSGate must connect
+and create a missing MySQL database itself.
+
+## Standalone: create the MySQL database when missing
+
 
 Install the Composer package, then specify a database name inside the MySQL DSN.
 The PHP package takes care of database and table initialization:

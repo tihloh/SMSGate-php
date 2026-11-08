@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1 - 2026-11-08
+
+- Added host-first `Gateway::database($database, $prefix)` accepting plain PDO or a Prefab-style object exposing `pdo(): PDO`.
+- Host owns database connection and naming; SMSGate creates only missing prefixed tables and preserves host data.
+- Kept standalone SQLite and auto-provisioning MySQL entry points for compatibility.
+- Added coverage for a supplied host database manager, shared data, table isolation and active host transactions.
+
 ## 0.2.0 - 2026-11-08
 
 - Added `Gateway::mysql()` with automatic creation of a missing MySQL database and preservation of existing databases and unrelated tables.

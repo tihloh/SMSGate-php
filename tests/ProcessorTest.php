@@ -136,4 +136,65 @@ final class ProcessorTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $profile->qrDataUri('pdf');
     }
+
+    public function testHostDatabaseObjectProvidesExistingConnectionAndKeepsTablesScoped(): void
+    {
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->exec('CREATE TABLE host_data (id INTEGER PRIMARY KEY, label TEXT NOT NULL)');
+        $pdo->exec("INSERT INTO host_data (id,label) VALUES (1,'keep me')");
+
+        // Mirrors Prefab DatabaseManager's public pdo(): PDO contract.
+        $host = new class($pdo) {
+            public function __construct(private \PDO $connection) {}
+            public function pdo(): \PDO { return $this->connection; }
+        };
+
+        $sms = Gateway::database($host, 'sms_');
+        $device = $sms->registerDevice('Android gateway');
+        self::assertCount(1, $sms->devices());
+
+        // Reuse a host-provided PDO directly, preserving the same data.
+        $again = Gateway::database($pdo, 'sms_');
+        self::assertSame($device->id, $again->devices()[0]['id']);
+        self::assertSame(
+            'keep me',
+            $pdo->query('SELECT label FROM host_data WHERE id=1')->fetchColumn()
+        );
+        self::assertSame(
+            5,
+            (int)$pdo->query(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE 'sms_%'"
+            )->fetchColumn()
+        );
+    }
+
+    public function testHostDatabaseObjectMustExposePdoAndStayOutsideHostTransactions(): void
+    {
+        try {
+            Gateway::database(new \stdClass());
+            self::fail('Expected invalid database adapter');
+        } catch (\InvalidArgumentException $error) {
+            self::assertStringContainsString('pdo()', $error->getMessage());
+        }
+
+        try {
+            Gateway::database(new class {
+                public function pdo(): string { return 'not a PDO'; }
+            });
+            self::fail('Expected invalid PDO result');
+        } catch (\InvalidArgumentException $error) {
+            self::assertStringContainsString('PDO', $error->getMessage());
+        }
+
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->beginTransaction();
+        try {
+            Gateway::database($pdo);
+            self::fail('Expected host transaction protection');
+        } catch (\LogicException) {
+            self::assertTrue($pdo->inTransaction());
+        } finally {
+            $pdo->rollBack();
+        }
+    }
 }

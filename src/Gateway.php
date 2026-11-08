@@ -34,6 +34,29 @@ final class Gateway
     public static function pdo(PDO $pdo, string $prefix = 'smsgate_'): self { return new self(new PdoStore($pdo, $prefix)); }
 
     /**
+     * Preferred host integration. Accepts an existing PDO connection or a
+     * database manager exposing public pdo(): PDO (e.g. Prefab Database).
+     * SMSGate manages only its prefixed tables, not host connection settings.
+     *
+     * The supplied connection must not be inside a host transaction because
+     * SMSGate owns its short, durable claim/receipt transactions.
+     */
+    public static function database(object $database, string $prefix = 'smsgate_'): self
+    {
+        if ($database instanceof PDO) return self::pdo($database, $prefix);
+        if (!is_callable([$database, 'pdo'])) {
+            throw new \InvalidArgumentException(
+                'Host database object must be PDO or expose a public pdo(): PDO method.'
+            );
+        }
+        $pdo = $database->pdo();
+        if (!$pdo instanceof PDO) {
+            throw new \InvalidArgumentException('Host database pdo() must return a PDO connection.');
+        }
+        return self::pdo($pdo, $prefix);
+    }
+
+    /**
      * Use an existing MySQL database, or create the named database when absent.
      * The provided prefix identifies this package's five tables, not a single
      * table. A separate PDO connection is created for SMSGate transactions.

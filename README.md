@@ -27,37 +27,42 @@ Run `composer update tihloh/smsgate`. Windows paths can use forward slashes, suc
 
 ## Quick start
 
-### 1. Configure storage
+### 1. Use the host application's database
+
+**Recommended:** pass SMSGate the host application's existing PDO or database
+manager object. No separate DSN, username, password, or database name is needed.
 
 ```php
 require __DIR__ . '/vendor/autoload.php';
 
 use Tihloh\SmsGate\Gateway;
 
-// The directory and required tables are created when missing.
-$gateway = Gateway::sqlite(__DIR__ . '/private/smsgate.sqlite');
+// $database is supplied by your host app:
+// - a plain PDO, or
+// - a Prefab DatabaseManager (exposes pdo(): PDO)
+$gateway = Gateway::database($database, 'smsgate_');
 ```
 
-For MySQL 8.0, use a **dedicated PDO MySQL connection**, not `mysqli`:
+The host selects and connects to its database. SMSGate automatically creates
+only its five missing prefixed tables. Existing host tables and data stay
+untouched. To select a Prefab named connection, pass
+`$database->connection('main')` instead of `$database`.
 
-```php
-$pdo = new PDO(
-    'mysql:host=127.0.0.1;port=3306;dbname=your_app;charset=utf8mb4',
-    getenv('DB_USER'),
-    getenv('DB_PASSWORD'),
-    [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES => false,
-    ]
-);
-$gateway = Gateway::pdo($pdo, 'smsgate_');
-$gateway->installSchema(); // Optional explicit deployment step; normal use also checks.
-```
+**Important:** SMSGate owns its own transactions. The supplied connection
+must not be participating in a host transaction. For workloads with
+independent host transactions, supply a separate host-managed PDO connection.
 
-See the [full PDO MySQL setup guide](docs/mysql-pdo.md) and [working connection example](examples/mysql-pdo.php).
+For standalone use without a host database object, use
+`Gateway::sqlite($path)` or `Gateway::mysql($dsn, $username, $password)`.
+The latter can create the named MySQL database if absent and authorized.
+**A host database object cannot create a missing database** because the host
+has already selected and opened the connection.
 
-The compact schema uses **five tables**: `smsgate_meta`, `smsgate_devices`, `smsgate_installations`, `smsgate_jobs` and `smsgate_records`. The typed records table stores enrollment credentials, deduplication caches, incoming and status receipts, callback events, and metadata without losing their individual uniqueness rules. Tables are prefixed and created automatically when missing. `installSchema()` remains available for deployment scripts and is repeatable. MySQL uses InnoDB. Use a dedicated connection: the package owns its transactions and rejects nesting inside your application's transaction. See [storage and reliability](docs/reliability.md).
+See [host PDO and MySQL integration](docs/mysql-pdo.md) and the
+[examples](examples/mysql-pdo.php). The compact schema uses five tables:
+`smsgate_meta`, `smsgate_devices`, `smsgate_installations`, `smsgate_jobs`
+and `smsgate_records`. Missing tables are installed on first use; legacy
+version-one SMSGate schemas require deliberate migration.
 
 ### 2. Process the single Android endpoint
 

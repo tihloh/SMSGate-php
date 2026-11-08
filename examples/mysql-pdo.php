@@ -12,8 +12,11 @@ $dsn = getenv('SMSGATE_MYSQL_DSN')
 $username = getenv('SMSGATE_MYSQL_USER') ?: '';
 $password = getenv('SMSGATE_MYSQL_PASSWORD') ?: '';
 
-// Creates the requested MySQL database when missing (with CREATE privilege),
-// then ensures the five SMSGate tables exist. Other tables are preserved.
+// Preferred host integration when $database is already supplied by your app:
+// $gateway = Gateway::database($database, 'smsgate_');
+//
+// Standalone fallback when no host database object exists:
+// create the MySQL database if missing (with CREATE privilege).
 $gateway = Gateway::mysql($dsn, $username, $password, 'smsgate_');
 
 // If you already have a *dedicated* PDO connection to an existing database,
