@@ -18,7 +18,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '${{ matrix.php }}'
-          extensions: pdo_sqlite
+          extensions: pdo_sqlite, xmlwriter, gd
           coverage: none
       - run: composer install --no-interaction --prefer-dist
       - run: composer check
@@ -28,6 +28,8 @@ jobs:
       SMSGATE_TEST_MYSQL_DSN: 'mysql:host=127.0.0.1;port=3306;dbname=smsgate_test;charset=utf8mb4'
       SMSGATE_TEST_MYSQL_USER: smsgate_test
       SMSGATE_TEST_MYSQL_PASSWORD: integration-test-only
+      SMSGATE_TEST_MYSQL_ADMIN_USER: root
+      SMSGATE_TEST_MYSQL_ADMIN_PASSWORD: integration-root-only
     services:
       mysql:
         image: mysql:8.0
@@ -45,7 +47,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
-          extensions: pdo_mysql, pdo_sqlite
+          extensions: pdo_mysql, pdo_sqlite, xmlwriter, gd
           coverage: none
       - run: composer install --no-interaction --prefer-dist
       - run: composer check
