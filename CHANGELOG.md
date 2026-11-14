@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.3 - 2026-11-14
+
+- Added authenticated device presence and monitoring via `HostApi::listDeviceStatuses()` and `getDeviceStatus()`.
+- Added the optional `heartbeat` action for approved Android installations, reporting running state and polling interval.
+- Added last-seen timestamps, connection and online status to device and installation results.
+- Implemented server-side status expiry: connected after 30 seconds without a running heartbeat; offline after 45 seconds without any authenticated contact.
+- Reused the existing five-table schema; no database migration or additional table is required.
+- Preserved compatibility with existing PHP host integrations and added tests for presence, permission checks and expiry.
+
 ## 0.2.2 - 2026-11-08
 
 - Added a host-facing `Gateway::api()` facade with list, queue, inbox, status, pairing, installation, and event operations.
