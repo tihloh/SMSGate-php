@@ -12,8 +12,10 @@ namespace Tihloh\SmsGate;
  */
 trait Presence
 {
-    private const PRESENCE_MIN_WINDOW_MS = 120000;
-    private const PRESENCE_MAX_WINDOW_MS = 1200000; // 20 minutes maximum.
+    // Android sends a lightweight heartbeat every 10s while visible or in a
+    // foreground service. The dashboard refreshes every 5s.
+    private const PRESENCE_CONNECTED_WINDOW_MS = 30000; // 3 missed heartbeats
+    private const PRESENCE_ONLINE_WINDOW_MS = 45000; // last authenticated contact
     
     /** Called only after token authentication. Never trusts client timestamps. */
     private function recordPresence(string $deviceId, string $installationId, ?bool $running = null, ?int $pollSeconds = null): void
@@ -101,13 +103,12 @@ trait Presence
             ? (int)$meta['heartbeatAt'] : null;
         $poll = isset($meta['pollSeconds']) && is_int($meta['pollSeconds'])
             ? max(15, min(3600, $meta['pollSeconds'])) : null;
-        $freshness = max(self::PRESENCE_MIN_WINDOW_MS,
-            min(self::PRESENCE_MAX_WINDOW_MS, (($poll ?? 30) * 2 + 60) * 1000));
+
         $now = $this->now();
         $online = $approved && $lastSeen !== null && $lastSeen <= $now &&
-            $now - $lastSeen <= $freshness;
+            $now - $lastSeen <= self::PRESENCE_ONLINE_WINDOW_MS;
         $connected = $online && $reportedRunning === true && $heartbeatAt !== null &&
-            $heartbeatAt <= $now && ($now - $heartbeatAt) <= $freshness;
+            $heartbeatAt <= $now && ($now - $heartbeatAt) <= self::PRESENCE_CONNECTED_WINDOW_MS;
         return [
             'lastSeenAt' => $lastSeen,
             'lastHeartbeatAt' => $heartbeatAt,

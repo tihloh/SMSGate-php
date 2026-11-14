@@ -67,7 +67,7 @@ The Android client sends a JSON request such as:
 {"action":"heartbeat","deviceId":"<installation UUID>","running":true,"pollSeconds":30}
 ```
 
-Only an approved installation with a valid Bearer token can report an active heartbeat. The server, not the client, controls last-seen timestamps. When the gateway stops it attempts `running=false`; an unreachable device naturally expires. The freshness window is based on polling frequency, bounded between 2 and 20 minutes. This feature adds no tables, schema migrations or externally accessible unauthenticated endpoints.
+Only an approved installation with a valid Bearer token can report an active heartbeat. The server, not the client, controls last-seen timestamps. When the gateway stops it attempts `running=false`; an unreachable device naturally expires. The fast presence monitor runs approximately every 10 seconds while the Android app is visible or a foreground gateway service is running, independent of SMS polling. `connected` becomes false after 30 seconds without a running heartbeat and `online` becomes false after 45 seconds without any authenticated contact. Background work restricted by Android cannot promise real-time reachability. This feature adds no tables, schema migrations or externally accessible unauthenticated endpoints.
 
 ## Business callbacks initiated by Android
 

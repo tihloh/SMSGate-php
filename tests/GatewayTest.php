@@ -87,12 +87,18 @@ final class GatewayTest extends TestCase
         self::assertTrue($install['connected']);
         self::assertSame($this->time, $install['lastSeenAt']);
 
-        $this->time += 120001;
+        $this->time += 30001; // Three missed 10-second heartbeats.
+        $notConnected = $this->gateway->api()->getDeviceStatus($deviceId);
+        self::assertTrue($notConnected['online']);
+        self::assertFalse($notConnected['connected']);
+        self::assertSame('online', $notConnected['presenceStatus']);
+
+        $this->time += 15000; // 45-second online window elapsed.
         $stale = $this->gateway->api()->getDeviceStatus($deviceId);
         self::assertFalse($stale['online']);
         self::assertFalse($stale['connected']);
         self::assertSame('offline', $stale['presenceStatus']);
-        self::assertSame($this->time - 120001, $stale['lastSeenAt']);
+        self::assertSame($this->time - 45001, $stale['lastSeenAt']);
 
         $this->gateway->process('heartbeat', [
             'deviceId' => $this->installation, 'running' => false, 'pollSeconds' => 30,

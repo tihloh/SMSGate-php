@@ -117,7 +117,7 @@ $installations = $api->listInstallations($deviceId);
 // $phone['presenceStatus'] — disabled/unpaired/offline/online/connected
 ```
 
-Status expires when the phone stops contacting the server. A 30-second polling interval yields a two-minute freshness window; slower intervals use a bounded window of at most 20 minutes. The UI should display last-seen time. Older PHP backends that do not recognize heartbeats return HTTP 404, which the Android client ignores while keeping SMS functions operational.
+With fast presence monitoring, the Android app sends a heartbeat about every 10 seconds while visible or while its foreground service runs, independently of SMS polling. Connected expires 30 seconds after the last running heartbeat; online expires 45 seconds after any authenticated contact. The host dashboard refreshes every 5 seconds. Android may delay background work when the app is not visible and no foreground service is active; such a device is correctly reported offline rather than falsely always connected. The UI should always display last-seen time. Older PHP backends that do not recognize heartbeats return HTTP 404, which the Android client ignores while keeping SMS functions operational.
 
 ### 3. Process the single Android endpoint
 
