@@ -27,6 +27,23 @@ final class HostApi
         return $this->gateway->getDevice($deviceId);
     }
 
+    /**
+     * Status monitor for registered gateways. Online/connected are recent
+     * heartbeat estimates, not persistent network sockets.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function listDeviceStatuses(int $limit = 100, int $offset = 0): array
+    {
+        return $this->gateway->devices($limit, $offset);
+    }
+
+    /** @return array<string,mixed>|null */
+    public function getDeviceStatus(string $deviceId): ?array
+    {
+        return $this->gateway->getDevice($deviceId);
+    }
+
     /** @return list<array<string, mixed>> */
     public function listInstallations(string $deviceId, int $limit = 100, int $offset = 0): array
     {

@@ -98,6 +98,27 @@ The host API is trusted server-side PHP, not a public HTTP endpoint.
 Android uses the separate, restricted `$gateway->process()` API below;
 do not expose host administration methods through the Android endpoint.
 
+### Device presence monitoring
+
+SMSGate reuses the existing `smsgate_records` table to store one last-seen/heartbeat record per installation. No schema migration or new table is required. Hosts access status through the PHP API without writing SQL.
+
+```php
+$api = $gateway->api();
+$devices = $api->listDeviceStatuses();
+$phone = $api->getDeviceStatus($deviceId);
+$installations = $api->listInstallations($deviceId);
+
+// $phone['enabled'] — device allowed by the server
+// $phone['online'] — authenticated contact within recent polling window
+// $phone['connected'] — recent running heartbeat (not a socket)
+// $phone['reportedRunning'] — true, false, or null
+// $phone['lastSeenAt'] and ['lastHeartbeatAt'] — Unix milliseconds
+// $phone['pollSeconds'] — last reported Android polling interval
+// $phone['presenceStatus'] — disabled/unpaired/offline/online/connected
+```
+
+Status expires when the phone stops contacting the server. A 30-second polling interval yields a two-minute freshness window; slower intervals use a bounded window of at most 20 minutes. The UI should display last-seen time. Older PHP backends that do not recognize heartbeats return HTTP 404, which the Android client ignores while keeping SMS functions operational.
+
 ### 3. Process the single Android endpoint
 
 ```php

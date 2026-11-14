@@ -8,7 +8,7 @@ Your PHP application owns one endpoint and decides that the request is POST. The
 $sms->process()->send();
 ```
 
-The setup profile `url` is the exact endpoint. Every request goes there with an `action` value of `pull`, `push`, `status`, or `test`.
+The setup profile `url` is the exact endpoint. Every request goes there with an `action` value of `pull`, `push`, `status`, `test`, or `heartbeat`.
 
 | Action | Android trigger | Data effect |
 |---|---|---|
@@ -16,6 +16,7 @@ The setup profile `url` is the exact endpoint. Every request goes there with an 
 | `push` | Incoming receiver/inbox sync | Stores one incoming SMS, deduplicates, then acknowledges. |
 | `status` | Modem sent/delivery callback | Stores the reported result and advances effective job state when valid. |
 | `test` | User taps Test connection | Verifies token, registers installation as pending, and reports approval without reading/sending SMS. |
+| `heartbeat` | Gateway sync or graceful stop | Updates last contact, Android reported running status and polling interval. |
 
 The package deliberately does not register the endpoint or enforce POST.
 
@@ -49,6 +50,24 @@ $sms = \Tihloh\SmsGate\Gateway::pdo($pdo, prefix: 'smsgate_');
 ```
 
 With host-provided `Gateway::database($database)`, the host owns database connection/creation; SMSGate installs only its own missing tables. The SQLite parent directory and missing tables are created automatically. MySQL can create a missing database when permissions allow; it never drops/replaces it or modifies unrelated host tables. `installSchema()` remains an optional explicit deployment command. Supported PDO drivers are SQLite and MySQL. Use a dedicated PDO outside host transactions because SMSGate owns its short transactions. Fresh installations use the five-table version-two schema. Missing tables are created only when the SDK is allowed to initialize its storage; existing schema version-one databases must be explicitly migrated before upgrading the package. A mismatched schema version fails closed.
+
+## Device status monitoring
+
+```php
+$devices = $sms->api()->listDeviceStatuses();
+$status = $sms->api()->getDeviceStatus($deviceId);
+$installations = $sms->api()->listInstallations($deviceId);
+```
+
+The trusted host API exposes `enabled`, `online`, `connected`, `reportedRunning`, `presenceStatus`, `pollSeconds`, `lastSeenAt`, and `lastHeartbeatAt`. The installation listing also includes `lastSeenAt` and online/connected fields. `online` means a recently successful authenticated request; `connected` means a recent heartbeat reported the Android gateway running. No persistent socket is implied.
+
+The Android client sends a JSON request such as:
+
+```json
+{"action":"heartbeat","deviceId":"<installation UUID>","running":true,"pollSeconds":30}
+```
+
+Only an approved installation with a valid Bearer token can report an active heartbeat. The server, not the client, controls last-seen timestamps. When the gateway stops it attempts `running=false`; an unreachable device naturally expires. The freshness window is based on polling frequency, bounded between 2 and 20 minutes. This feature adds no tables, schema migrations or externally accessible unauthenticated endpoints.
 
 ## Business callbacks initiated by Android
 

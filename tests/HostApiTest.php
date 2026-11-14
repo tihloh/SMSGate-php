@@ -31,6 +31,13 @@ final class HostApiTest extends TestCase
         self::assertSame('pending', $api->listInstallations($device->id)[0]['status']);
         $api->approveInstallation($device->id, $installation);
         self::assertSame('approved', $api->listInstallations($device->id)[0]['status']);
+        self::assertSame('offline', $api->getDeviceStatus($device->id)['presenceStatus']);
+        $presence = $gateway->process('heartbeat', [
+            'deviceId' => $installation, 'running' => true, 'pollSeconds' => 30
+        ], $device->token(), Support::uuid());
+        self::assertSame(200, $presence->status);
+        self::assertTrue($api->listDeviceStatuses()[0]['connected']);
+        self::assertNotNull($api->getDeviceStatus($device->id)['lastSeenAt']);
 
         $key = Support::uuid();
         $first = $api->queueSms($device->id, ['+639171234567'], 'Host API test', requestKey: $key);

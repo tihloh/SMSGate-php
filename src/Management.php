@@ -9,7 +9,8 @@ trait Management
 {
     public function getDevice(string $id): ?array
     {
-        return $this->q("SELECT id,name,active,created_at FROM {$this->t('devices')} WHERE id=?",[$id])->fetch() ?: null;
+        $row = $this->q($this->deviceOverviewSql() . " WHERE d.id=?", [$id])->fetch();
+        return $row ? $this->describeDevice($row) : null;
     }
     public function updateDevice(string $id, array $changes): array
     {
@@ -47,7 +48,16 @@ trait Management
     }
     public function getInstallation(string $deviceId,string $installationId): ?array
     {
-        return $this->q("SELECT installation_id,status,first_seen,reviewed_at FROM {$this->t('installations')} WHERE device_id=? AND installation_id=?",[$deviceId,Support::installation($installationId)])->fetch() ?: null;
+        $row = $this->q(
+            "SELECT i.installation_id,i.status,i.first_seen,i.reviewed_at,p.created_at AS last_seen_at,p.metadata AS presence_metadata" .
+            " FROM {$this->t('installations')} i LEFT JOIN {$this->t('records')} p" .
+            " ON p.scope='presence' AND p.device_id=i.device_id AND p.kind='' AND p.id=i.installation_id" .
+            " WHERE i.device_id=? AND i.installation_id=?",
+            [$deviceId, Support::installation($installationId)]
+        )->fetch();
+        if (!$row) return null;
+        $enabled = (int)$this->device($deviceId, false)['active'] === 1;
+        return $this->describeInstallation($row, $enabled);
     }
     public function updateInstallation(string $deviceId,string $installationId,string $status): array
     {

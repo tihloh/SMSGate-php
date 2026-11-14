@@ -29,7 +29,7 @@ final class Processor
             if (!is_string($action)) throw new GatewayException('unknown_action', 422);
             unset($data['action']);
             $path = match ($action) {
-                'pull' => '/v1/jobs/claim', 'push' => '/v1/incoming', 'status' => '/v1/events', 'test' => '/v1/test',
+                'pull' => '/v1/jobs/claim', 'push' => '/v1/incoming', 'status' => '/v1/events', 'test' => '/v1/test', 'heartbeat' => '/v1/presence',
                 default => throw new GatewayException('unknown_action', 404),
             };
             if ($token === null) {

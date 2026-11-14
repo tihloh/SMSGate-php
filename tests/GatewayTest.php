@@ -54,6 +54,86 @@ final class GatewayTest extends TestCase
         $this->gateway->approveDevice($this->device->id, $this->installation);
     }
 
+    public function testDevicePresenceUsesAuthenticatedHeartbeatsAndExpires(): void
+    {
+        $deviceId = $this->device->id;
+        $this->approve();
+        $initial = $this->gateway->api()->getDeviceStatus($deviceId);
+        self::assertSame('offline', $initial['presenceStatus']);
+        self::assertFalse($initial['online']);
+        self::assertNull($initial['lastSeenAt']);
+
+        // An ordinary authenticated request proves recent reachability, but
+        // cannot claim that the Android gateway is running.
+        $this->call('/v1/test');
+        $seen = $this->gateway->api()->listDeviceStatuses()[0];
+        self::assertTrue($seen['enabled']);
+        self::assertTrue($seen['online']);
+        self::assertFalse($seen['connected']);
+        self::assertSame('online', $seen['presenceStatus']);
+        self::assertSame($this->time, $seen['lastSeenAt']);
+
+        $heartbeat = $this->gateway->process('heartbeat', [
+            'deviceId' => $this->installation, 'running' => true, 'pollSeconds' => 30,
+        ], $this->device->token(), Support::uuid());
+        self::assertSame(200, $heartbeat->status);
+        $online = $this->gateway->api()->getDeviceStatus($deviceId);
+        self::assertTrue($online['connected']);
+        self::assertSame('connected', $online['presenceStatus']);
+        self::assertSame($this->time, $online['lastHeartbeatAt']);
+        self::assertSame(30, $online['pollSeconds']);
+        self::assertTrue($online['reportedRunning']);
+        $install = $this->gateway->installations($deviceId)[0];
+        self::assertTrue($install['connected']);
+        self::assertSame($this->time, $install['lastSeenAt']);
+
+        $this->time += 120001;
+        $stale = $this->gateway->api()->getDeviceStatus($deviceId);
+        self::assertFalse($stale['online']);
+        self::assertFalse($stale['connected']);
+        self::assertSame('offline', $stale['presenceStatus']);
+        self::assertSame($this->time - 120001, $stale['lastSeenAt']);
+
+        $this->gateway->process('heartbeat', [
+            'deviceId' => $this->installation, 'running' => false, 'pollSeconds' => 30,
+        ], $this->device->token(), Support::uuid());
+        $stopped = $this->gateway->api()->getDeviceStatus($deviceId);
+        self::assertTrue($stopped['online']);
+        self::assertFalse($stopped['connected']);
+        self::assertFalse($stopped['reportedRunning']);
+
+        $this->gateway->setDeviceEnabled($deviceId, false);
+        $disabled = $this->gateway->api()->getDeviceStatus($deviceId);
+        self::assertSame('disabled', $disabled['presenceStatus']);
+        self::assertFalse($disabled['online']);
+        $this->gateway->setDeviceEnabled($deviceId, true);
+
+        $this->gateway->blockDevice($deviceId, $this->installation);
+        $unpaired = $this->gateway->api()->getDeviceStatus($deviceId);
+        self::assertSame('unpaired', $unpaired['presenceStatus']);
+        self::assertFalse($unpaired['connected']);
+    }
+
+    public function testPresenceRequiresApprovalAndRejectsInvalidClaims(): void
+    {
+        $this->denied(fn() => $this->call('/v1/presence', ['running'=>true,'pollSeconds'=>30]), 'device_pending_approval');
+        $this->approve();
+        foreach ([
+            ['running' => 'true', 'pollSeconds' => 30],
+            ['running' => true, 'pollSeconds' => 0],
+            ['running' => true, 'pollSeconds' => '30'],
+            ['running' => true, 'pollSeconds' => 3601],
+        ] as $body) {
+            $response = $this->gateway->process('heartbeat', ['deviceId' => $this->installation] + $body,
+                $this->device->token(), Support::uuid());
+            self::assertSame(422, $response->status);
+        }
+        self::assertSame(401, $this->gateway->process('heartbeat', [
+            'deviceId' => $this->installation, 'running' => true, 'pollSeconds' => 30,
+        ], str_repeat('a', 64), Support::uuid())->status);
+        self::assertNull($this->gateway->api()->getDeviceStatus($this->device->id)['lastHeartbeatAt']);
+    }
+
     public function testPendingPersistsAndCannotSelfApprove(): void
     {
         $this->denied(fn() => $this->call(), 'device_pending_approval');

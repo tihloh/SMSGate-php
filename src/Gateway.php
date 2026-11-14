@@ -12,6 +12,7 @@ final class Gateway
 {
     use Management;
     use RequestEvents;
+    use Presence;
     private readonly \Closure $clock;
     private array $listeners = [];
     private array $callbackErrors = [];
@@ -110,13 +111,22 @@ final class Gateway
     public function devices(int $limit = 100, int $offset = 0): array
     {
         $this->page($limit, $offset);
-        return $this->q("SELECT id,name,active,created_at FROM {$this->t('devices')} ORDER BY created_at,id LIMIT $limit OFFSET $offset")->fetchAll();
+        $rows = $this->q($this->deviceOverviewSql() . " ORDER BY d.created_at,d.id LIMIT $limit OFFSET $offset")->fetchAll();
+        return array_map($this->describeDevice(...), $rows);
     }
 
     public function installations(string $deviceId, int $limit = 100, int $offset = 0): array
     {
         $this->page($limit, $offset);
-        return $this->q("SELECT installation_id,status,first_seen,reviewed_at FROM {$this->t('installations')} WHERE device_id=? ORDER BY first_seen,installation_id LIMIT $limit OFFSET $offset", [$deviceId])->fetchAll();
+        $enabled = (int)$this->device($deviceId, false)['active'] === 1;
+        $rows = $this->q(
+            "SELECT i.installation_id,i.status,i.first_seen,i.reviewed_at, p.created_at AS last_seen_at, p.metadata AS presence_metadata" .
+            " FROM {$this->t('installations')} i LEFT JOIN {$this->t('records')} p" .
+            " ON p.scope='presence' AND p.device_id=i.device_id AND p.kind='' AND p.id=i.installation_id" .
+            " WHERE i.device_id=? ORDER BY i.first_seen,i.installation_id LIMIT $limit OFFSET $offset",
+            [$deviceId]
+        )->fetchAll();
+        return array_map(fn(array $row): array => $this->describeInstallation($row, $enabled), $rows);
     }
 
     public function approveDevice(string $deviceId, string $installationId): void { $this->review($deviceId, $installationId, 'approved'); }
@@ -326,7 +336,7 @@ final class Gateway
     /** Android protocol entry point; administrative methods are never routed here. */
     public function handleDeviceRequest(string $path, #[\SensitiveParameter] string $token, #[\SensitiveParameter] array $body, string $key): array
     {
-        if (!in_array($path, ['/v1/jobs/claim','/v1/incoming','/v1/events','/v1/test'], true)) throw new GatewayException('not_found', 404);
+        if (!in_array($path, ['/v1/jobs/claim','/v1/incoming','/v1/events','/v1/test','/v1/presence'], true)) throw new GatewayException('not_found', 404);
         if (!preg_match('/^[A-Za-z0-9_-]{32,256}$/D', $token)) throw new GatewayException('unauthorized', 401);
         $installation = Support::installation($body['deviceId'] ?? null);
         // Commit pending registration before returning 403, so admins can review it.
@@ -354,9 +364,22 @@ final class Gateway
             $current = $this->device($device['id']);
             if (!hash_equals($current['token_hash'], hash('sha256', $token))) throw new GatewayException('unauthorized', 401);
             $status = $this->q("SELECT status FROM {$this->t('installations')} WHERE device_id=? AND installation_id=?", [$device['id'], $installation])->fetchColumn();
-            if ($path === '/v1/test') return ['ok' => true, 'approved' => $status === 'approved', 'status' => $status, 'deviceId' => $device['id'], 'installationId' => $installation, 'serverTime' => $this->now()];
+            if ($path === '/v1/test') {
+                if ($status !== 'blocked') $this->recordPresence($device['id'], $installation);
+                return ['ok' => true, 'approved' => $status === 'approved', 'status' => $status,
+                    'deviceId' => $device['id'], 'installationId' => $installation, 'serverTime' => $this->now()];
+            }
             if ($status !== 'approved') throw new GatewayException($status === 'blocked' ? 'device_blocked' : 'device_pending_approval', 403);
             Support::key($key);
+            if ($path === '/v1/presence') {
+                $running = $body['running'] ?? null;
+                $pollSeconds = $body['pollSeconds'] ?? null;
+                if (!is_bool($running)) throw new GatewayException('invalid_running');
+                if (!is_int($pollSeconds) || $pollSeconds < 15 || $pollSeconds > 3600) throw new GatewayException('invalid_poll_seconds');
+                $this->recordPresence($device['id'], $installation, $running, $pollSeconds);
+                return ['ok' => true, 'serverTime' => $this->now()];
+            }
+            $this->recordPresence($device['id'], $installation);
             return match ($path) {
                 '/v1/jobs/claim' => $this->claim($device['id'], $body, $key),
                 '/v1/incoming' => $this->receive($device['id'], 'incoming', $body, $key),
